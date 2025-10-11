@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>로또 예측 — 최근 10회만 표시 · 전체 데이터는 분석에만 사용</title>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
-  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
   <style>
     :root { --bg:#0f172a; --card:#111827; --text:#e5e7eb; --muted:#9ca3af; --accent:#60a5fa; --ok:#34d399; --warn:#fbbf24; --bad:#f87171; }
     *{box-sizing:border-box}
@@ -28,8 +27,6 @@
     .kpi .item{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);padding:10px;border-radius:10px}
     .kpi .label{color:var(--muted);font-size:12px}
     .kpi .value{font-size:18px;font-weight:800;margin-top:2px}
-    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-    canvas{background:rgba(255,255,255,.02);border-radius:8px}
     .right{margin-left:auto}
     input[type=number],input[type=text]{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:var(--text);border-radius:8px;padding:6px 8px}
     input[type=number]{width:90px} input[type=text]{width:140px}
@@ -57,7 +54,6 @@
     .group-grid{display:grid;gap:8px}
     @media(min-width:980px){.group-grid{grid-template-columns:1fr 1fr}}
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
   <header>
@@ -97,12 +93,11 @@
   </div>
 
   <div class="container grid grid-2">
-
-    <section class="card">
-      <div class="sec-title"><h2>📊 번호별 출현 빈도</h2><span class="muted small">(분석 기준: 전체/200 데이터)</span></div>
-      <canvas id="freqChart" height="160"></canvas>
-      <div id="topFreq"></div>
-      <div id="freqErr" class="err" style="display:none"></div>
+    <!-- (변경) 그래프 섹션 제거, 테이블만 노출 -->
+    <section class="card" style="grid-column:1/-1">
+      <div class="sec-title"><h2>🟡🔵🔴🟣🟢 구간별 번호 빈도(오름차순)</h2><span class="muted small">(1~10 / 11~20 / 21~30 / 31~40 / 41~45)</span></div>
+      <div class="group-grid" id="groupFreqWrap"></div>
+      <div id="groupErr" class="err" style="display:none"></div>
     </section>
 
     <section class="card">
@@ -114,12 +109,6 @@
       </div>
       <div id="network" style="height:380px;background:rgba(255,255,255,.02);border-radius:10px;margin-top:8px;display:block"></div>
       <div id="netErr" class="err" style="display:none"></div>
-    </section>
-
-    <section class="card" style="grid-column:1/-1">
-      <div class="sec-title"><h2>🟡🔵🔴🟣🟢 구간별 번호 빈도(오름차순)</h2><span class="muted small">(1~10 / 11~20 / 21~30 / 31~40 / 41~45)</span></div>
-      <div class="group-grid" id="groupFreqWrap"></div>
-      <div id="groupErr" class="err" style="display:none"></div>
     </section>
 
     <section class="card" style="grid-column:1/-1">
@@ -190,7 +179,6 @@
         s1.src = 'https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.6/vis-network.min.js';
         s1.onload = () => setTimeout(()=> done(), 0);
         s1.onerror = () => {
-          // fallback
           const s2 = document.createElement('script');
           s2.src = 'https://unpkg.com/vis-network@9.1.6/dist/vis-network.min.js';
           s2.onload = () => setTimeout(()=> done(), 0);
@@ -199,7 +187,6 @@
         };
         document.head.appendChild(s1);
 
-        // CSS도 보장
         const l = document.createElement('link');
         l.rel='stylesheet';
         l.href='https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.6/vis-network.min.css';
@@ -223,7 +210,7 @@
     function renderTable(el, rows, headers){
       if(!rows || !rows.length){ el.innerHTML = '<div class="muted small">데이터 없음</div>'; return; }
       el.innerHTML = '<table><thead><tr>' + headers.map(h=>`<th>${h}</th>`).join('') + '</tr></thead><tbody>' +
-        rows.map(r=>'<tr>' + headers.map(h=>`<td>'+String(r[h]??'')+'</td>`).join('') + '</tr>').join('') + '</tbody></table>';
+        rows.map(r=>'<tr>' + headers.map(h=>`<td>${r[h] ?? ''}</td>`).join('') + '</tr>').join('') + '</tbody></table>';
     }
 
     // ===== 분석 함수 =====
@@ -247,25 +234,31 @@
       });
     }
 
-    // ===== 차트/네트워크 =====
-    function drawFreqChart(freq){
-      const ctx = byId('freqChart').getContext('2d');
-      const labels = Array.from({length:45}, (_,i)=>i+1);
-      if (window._freqChart) window._freqChart.destroy();
-      window._freqChart = new Chart(ctx, {
-        type:'bar',
-        data:{labels, datasets:[{label:'출현 횟수', data:labels.map(i=>freq[i]||0)}]},
-        options:{responsive:true, maintainAspectRatio:false}
-      });
+    // ===== 네트워크 (숫자 공 라벨) =====
+    function nodeColor(n){
+      if(n>=1 && n<=10) return '#facc15';
+      if(n>=11 && n<=20) return '#60a5fa';
+      if(n>=21 && n<=30) return '#ef4444';
+      if(n>=31 && n<=40) return '#a78bfa';
+      return '#34d399';
     }
     async function drawNetwork(map, topK){
       await ensureVis();
       const arr = Array.from(map.entries()).map(([k,v])=>({k,v})).sort((a,b)=>b.v-a.v).slice(0, topK);
       const nodes = new Set(); arr.forEach(e=>e.k.split(',').forEach(x=>nodes.add(+x)));
-      const ndata = Array.from(nodes).map(n=>({id:n,label:String(n),value:n}));
+      const ndata = Array.from(nodes).map(n=>({
+        id:n, label:String(n), value:n,
+        color:{ background: nodeColor(n), border: 'rgba(0,0,0,0.4)', highlight:{background: nodeColor(n), border:'#000'} },
+        shape:'circle', size:24, font:{color:'#111', size:16, bold:true}
+      }));
       const edata = arr.map(e=>{ const [a,b]=e.k.split(',').map(Number); return {from:a,to:b,value:e.v,width:1+e.v}; });
       const data = { nodes:new vis.DataSet(ndata), edges:new vis.DataSet(edata) };
-      new vis.Network(byId('network'), data, { nodes:{shape:'dot'}, edges:{smooth:true} });
+      const options = {
+        nodes:{ shape:'circle' },
+        edges:{ smooth:true, color:{opacity:0.5} },
+        physics:{ stabilization:true }
+      };
+      new vis.Network(byId('network'), data, options);
     }
 
     // ===== 추천(보수/균형/고위험) =====
@@ -301,17 +294,6 @@
       }
       return arr.sort((a,b)=>b.score-a.score).slice(0,20);
     }
-    function adaptive(stats){
-      const list = Object.entries(stats).map(([name,arr])=>{
-        if (!arr.length) return {name, meanScore:-1, rr:-1, meanRisk:999};
-        const ms = arr.reduce((a,b)=>a+b.score,0)/arr.length;
-        const mr = arr.reduce((a,b)=>a+b.risk,0)/arr.length;
-        const mw = arr.reduce((a,b)=>a+b.reward,0)/arr.length;
-        return {name, meanScore:ms, rr: mw/(mr+1e-3), meanRisk:mr};
-      });
-      list.sort((a,b)=> b.meanScore-a.meanScore || b.rr-a.rr || a.meanRisk-b.meanRisk);
-      return list[0];
-    }
 
     // ===== 예측(5세트 + 근거%) =====
     function normalize(arr){
@@ -337,13 +319,11 @@
           const count = Math.max(1, Math.floor(w*100));
           for(let i=0;i<count;i++) pool.push(n);
         }
-        // 세트 간 다양성
         for(const u of used){ const idx = pool.indexOf(u); if(idx>=0) pool.splice(idx,1); }
         const pick=new Set(); while(pick.size<6) pick.add(pool[Math.floor(Math.random()*pool.length)]);
         const nums = Array.from(pick).sort((a,b)=>a-b);
         nums.forEach(n=>used.add(n));
 
-        // 보너스: 해당 세트와 공출현 합이 가장 큰 수
         let bestB=null, bestV=-1;
         for(let b=1;b<=45;b++){
           if(nums.includes(b)) continue;
@@ -353,7 +333,6 @@
         }
         const bonus = bestB || 1+Math.floor(Math.random()*45);
 
-        // 설명% (0~100)
         const sum = nums.reduce((a,b)=>a+b,0);
         const odd = nums.filter(n=>n%2===1).length;
         const high = nums.filter(n=>n>23).length;
@@ -374,7 +353,7 @@
     // ===== 상태 =====
     let LATEST=null, ALL=[], BASE=[], FREQ=[];
 
-    // ===== KPI/표시 =====
+    // ===== 표시 =====
     function updateKPIs(rows){
       try{
         const avg = a => a.reduce((x,y)=>x+y,0)/a.length;
@@ -382,15 +361,6 @@
         byId('kSum').textContent = avg(rows.map(x=>x.sum)).toFixed(1);
         byId('kOdd').textContent = avg(rows.map(x=>x.odd)).toFixed(2);
       }catch(e){ byId('kpiErr').style.display='block'; byId('kpiErr').textContent='KPI 오류: '+e.message; }
-    }
-    function refreshFreqAndTop(){
-      try{
-        drawFreqChart(FREQ);
-        const top = Array.from({length:45}, (_,i)=>({번호:i+1, 빈도:FREQ[i+1]})).sort((a,b)=>b.빈도-a.빈도).slice(0,10);
-        renderTable(byId('topFreq'), top, ['번호','빈도']);
-        // 그룹 빈도
-        renderGroupFreq();
-      }catch(e){ byId('freqErr').style.display='block'; byId('freqErr').textContent='빈도 표시 오류: '+e.message; }
     }
 
     function renderGroupFreq(){
@@ -509,9 +479,7 @@
         const coMap = buildCoMap(windowRows);
         const sets = predictSets(src, freqAll, coMap, N, alpha, 5);
 
-        // 좌: 공 5세트
         const left = byId('predBalls'); left.innerHTML='';
-        // 우: 근거표
         const right = byId('predTable');
 
         const rowsForTable = [];
@@ -542,19 +510,18 @@
         byId('recentErr').style.display='block'; byId('recentErr').textContent='최신 회차 로드 실패: '+e.message;
       }
 
-      // 최소 데이터(최근 200회)로 즉시 전체 분석 가동
       try{
         const start = Math.max(1, LATEST - 199);
         const j = await api(`/api/all?start=${start}&end=${LATEST}`);
         BASE = computeFeatures(j.rows);
         FREQ = frequency(BASE);
         byId('dataStatus').textContent = '최근 200회';
-        refreshFreqAndTop();
+        renderGroupFreq();
         renderRecentTable();
         drawNetHandler();
         runRecs();
         updateKPIs(BASE);
-        runPredict(); // 초기 예측도 바로 생성
+        runPredict();
       }catch(e){
         byId('recentErr').style.display='block'; byId('recentErr').textContent='최근 200회 로드 오류: '+e.message;
       }
@@ -574,7 +541,7 @@
         ALL = computeFeatures(full.rows);
         FREQ = frequency(ALL);
         byId('dataStatus').textContent = '전체(완료)';
-        refreshFreqAndTop();
+        renderGroupFreq();
         await drawNetHandler();
         runRecs();
         updateKPIs(ALL);
