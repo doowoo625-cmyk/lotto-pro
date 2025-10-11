@@ -1,7 +1,0 @@
-services:
-- type: web
-  name: lotto-pro
-  env: docker
-  plan: free
-  autoDeploy: true
-  envVars: []
