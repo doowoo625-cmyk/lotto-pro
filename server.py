@@ -1,18 +1,16 @@
-# -*- coding: utf-8 -*-
+import os
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse, FileResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 import requests, re
-from typing import List, Dict, Any
+from bs4 import BeautifulSoup
 from pathlib import Path
+import pandas as pd
 
-# ---- App ----
-app = FastAPI(title="Lotto Predictor API", version="1.0.0")
-BASE_DIR = Path(__file__).resolve().parent
-STATIC_DIR = BASE_DIR / "static"
+app = FastAPI()
 
-# CORS (allow all for convenience; restrict as needed)
+# ✅ CORS (웹 API 접근 허용)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -21,66 +19,51 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve /static and homepage
+# ✅ 정적 파일 경로
+BASE_DIR = Path(__file__).resolve().parent
+STATIC_DIR = BASE_DIR / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-# ---- Lotto helpers ----
-HDRS = {"User-Agent": "Mozilla/5.0"}
+# ✅ 최신 회차 크롤링
+def get_latest():
+    r = requests.get("https://www.dhlottery.co.kr/gameResult.do?method=byWin")
+    s = BeautifulSoup(r.text, "html.parser")
+    t = s.select_one("meta[property='og:title']")["content"]
+    m = re.search(r"제(\d+)회", t)
+    return int(m.group(1)) if m else 0
 
-def get_latest_round() -> int:
-    # More stable approach: scrape the byWin page title containing "제xxxx회"
-    url = "https://www.dhlottery.co.kr/gameResult.do?method=byWin"
-    r = requests.get(url, headers=HDRS, timeout=10)
-    m = re.search(r"제(\d+)회", r.text)
-    if m:
-        return int(m.group(1))
-    # Fallback to 0
-    return 0
-
-def fetch_round_json(n: int) -> Dict[str, Any]:
-    # Official JSON endpoint
-    url = f"https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo={n}"
-    r = requests.get(url, headers=HDRS, timeout=10)
-    j = r.json()
-    if j.get("returnValue") != "success":
-        raise ValueError(f"회차 {n} 데이터 없음")
-    nums = [j["drwtNo1"], j["drwtNo2"], j["drwtNo3"], j["drwtNo4"], j["drwtNo5"], j["drwtNo6"]]
-    bonus = j["bnusNo"]
-    date = j.get("drwNoDate", "")
+# ✅ 특정 회차 크롤링
+def fetch_round(n):
+    url = f"https://www.dhlottery.co.kr/gameResult.do?method=byWin&drwNo={n}"
+    r = requests.get(url)
+    soup = BeautifulSoup(r.text, "html.parser")
+    nums = [int(x.text) for x in soup.select(".nums .num")]
+    bonus = int(soup.select_one(".num.bonus").text)
+    date = soup.select_one(".desc").text.strip().split(" ")[0]
     return {"round": n, "date": date, "nums": nums, "bonus": bonus}
 
-def fetch_all_rounds(start: int, end: int) -> List[Dict[str, Any]]:
-    out = []
-    for n in range(start, end + 1):
-        try:
-            out.append(fetch_round_json(n))
-        except Exception:
-            # skip missing rounds gracefully
-            continue
-    return out
-
-# ---- API ----
 @app.get("/api/latest")
-def api_latest():
-    latest = get_latest_round()
-    return {"latest": latest}
+def latest():
+    return {"latest": get_latest()}
 
 @app.get("/api/all")
-def api_all(start: int = 1, end: int | None = None):
-    if end is None or end < 1:
-        end = get_latest_round()
-    if start < 1:
-        start = 1
-    if end < start:
-        return JSONResponse({"rows": []})
-    rows = fetch_all_rounds(start, end)
-    return {"rows": rows}
-
-@app.get("/health")
-def health():
-    return {"ok": True}
+def all_data(start: int = 1, end: int = None):
+    if end is None:
+        end = get_latest()
+    results = []
+    for i in range(start, end + 1):
+        try:
+            results.append(fetch_round(i))
+        except Exception:
+            continue
+    return {"rows": results}
 
 @app.get("/")
-def root():
-    index_path = STATIC_DIR / "index.html"
-    return FileResponse(index_path)
+def index():
+    return FileResponse(STATIC_DIR / "index.html")
+
+# ✅ Render 환경 포트 적용
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("server_render:app", host="0.0.0.0", port=port)
