@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>로또 예측 — 최근 10회 표시 · 전체 데이터는 분석에만 사용</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+  <style>
+    :root { --bg:#0f172a; --card:#111827; --text:#e5e7eb; --muted:#9ca3af; --accent:#60a5fa; }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI","Noto Sans KR",Arial}
+    header{padding:16px 12px;position:sticky;top:0;background:linear-gradient(180deg,rgba(15,23,42,.95),rgba(15,23,42,.7),rgba(15,23,42,0));border-bottom:1px solid rgba(255,255,255,.06);z-index:5}
+    h1{margin:0;font-size:20px}
+    .container{max-width:1100px;margin:0 auto;padding:12px}
+    .grid{display:grid;gap:12px}
+    @media(min-width:900px){.grid-2{grid-template-columns:1fr 1fr}.grid-3{grid-template-columns:1fr 1fr 1fr}}
+    .card{background:var(--card);border:1px solid rgba(255,255,255,.06);border-radius:14px;padding:14px}
+    .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .pill{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);font-size:12px}
+    .muted{color:var(--muted)}
+    button{background:var(--accent);color:#0b1220;border:none;padding:8px 12px;border-radius:10px;font-weight:700;cursor:pointer}
+    .small{font-size:12px}
+    table{width:100%;border-collapse:collapse;font-size:14px}
+    th,td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.06)}
+    th{text-align:left;color:var(--muted)}
+    .kpi{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+    .kpi .item{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);padding:10px;border-radius:10px}
+    .kpi .label{color:var(--muted);font-size:12px}
+    .kpi .value{font-size:18px;font-weight:800;margin-top:2px}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+    canvas{background:rgba(255,255,255,.02);border-radius:8px}
+    .right{margin-left:auto}
+    input[type=number],input[type=text]{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:var(--text);border-radius:8px;padding:6px 8px}
+    input[type=number]{width:90px} input[type=text]{width:140px}
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.6/vis-network.min.js"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.6/vis-network.min.css"/>
+</head>
+<body>
+<header>
+  <div class="container row">
+    <h1>🎯 로또 예측 — 최근 10회만 표시</h1>
+    <span class="pill">최신 회차: <b id="latest">-</b></span>
+    <span class="pill">데이터: <b id="dataStatus">최근 200회</b></span>
+    <button id="loadAll">전체 데이터 로드(백그라운드)</button>
+    <span class="right pill small muted">전체 데이터는 분석/예측에만 사용 · 화면은 최근 10회만</span>
+  </div>
+</header>
+
+<div class="container grid grid-2">
+  <section class="card">
+    <h2>📊 번호별 출현 빈도 (분석: 전체 데이터 기준)</h2>
+    <canvas id="freqChart" height="160"></canvas>
+    <div id="topFreq"></div>
+  </section>
+
+  <section class="card">
+    <h2>🕸️ 최근 공출현 네트워크</h2>
+    <div class="row small">
+      <label>최근 N회 <input type="number" id="lastN" value="10" min="5" max="50"></label>
+      <label>상위 간선 <input type="number" id="topK" value="40" min="10" max="120" step="5"></label>
+      <button id="netBtn">네트워크 갱신</button>
+    </div>
+    <div id="network" style="height:380px;background:rgba(255,255,255,.02);border-radius:10px;margin-top:8px"></div>
+  </section>
+
+  <section class="card" style="grid-column:1/-1">
+    <h2>🎲 전략별 추천 + Adaptive (분석: 전체 데이터 기준)</h2>
+    <div class="row small">
+      <label>시뮬레이션 <input type="number" id="trials" value="30000" min="5000" max="80000" step="5000"></label>
+      <label>합계 <input id="sumMin" value="120" style="width:70px"> ~ <input id="sumMax" value="170" style="width:70px"></label>
+      <label>홀수 <input id="oddMin" value="2" style="width:60px"> ~ <input id="oddMax" value="4" style="width:60px"></label>
+      <label>고번호 <input id="highMin" value="2" style="width:60px"> ~ <input id="highMax" value="4" style="width:60px"></label>
+      <button id="runRecs">추천 재계산</button>
+    </div>
+    <div id="recs" class="grid grid-3"></div>
+    <div class="kpi" style="margin-top:8px">
+      <div class="item"><div class="label">Adaptive 전략</div><div id="asName" class="value">-</div></div>
+      <div class="item"><div class="label">평균 Score</div><div id="asScore" class="value">-</div></div>
+      <div class="item"><div class="label">보상/위험 비</div><div id="asRR" class="value">-</div></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>📋 최근 10회 결과 (UI는 최근 10회만 표시)</h2>
+    <div class="row small">
+      <label>표시 개수 <input type="number" id="showCount" value="10" min="5" max="20"></label>
+      <button id="refreshTable">표 갱신</button>
+    </div>
+    <div id="recentTable"></div>
+  </section>
+
+  <section class="card">
+    <h2>🔎 회차 점프 (숫자 입력 가능한 드롭다운)</h2>
+    <div class="row small">
+      <input type="text" id="roundJump" list="roundsList" placeholder="회차 번호 입력/선택">
+      <datalist id="roundsList"></datalist>
+      <button id="jumpBtn">이동</button>
+    </div>
+    <div id="jumpResult" class="small muted">회차를 선택하면 아래에 번호가 표시됩니다.</div>
+  </section>
+
+  <section class="card">
+    <h2>📈 확률 요약 (전체 데이터 기준)</h2>
+    <div class="kpi">
+      <div class="item"><div class="label">전체 회차</div><div id="kAll" class="value">-</div></div>
+      <div class="item"><div class="label">평균 합계</div><div id="kSum" class="value">-</div></div>
+      <div class="item"><div class="label">평균 홀수</div><div id="kOdd" class="value">-</div></div>
+    </div>
+  </section>
+</div>
+
+<script>
+  async function api(p){ const r = await fetch(p, {cache:'no-store'}); if(!r.ok) throw new Error(await r.text()); return r.json(); }
+  const byId = (id)=>document.getElementById(id);
+  function renderTable(el, rows, headers){
+    el.innerHTML = '<table><thead><tr>' + headers.map(h=>`<th>${h}</th>`).join('') + '</tr></thead><tbody>' +
+      rows.map(r=>'<tr>' + headers.map(h=>`<td>${r[h]??''}</td>`).join('') + '</tr>').join('') + '</tbody></table>';
+  }
+  function drawFreqChart(freq){
+    const ctx = document.getElementById('freqChart').getContext('2d');
+    const labels = Array.from({length:45}, (_,i)=>i+1);
+    if (window._freqChart) window._freqChart.destroy();
+    window._freqChart = new Chart(ctx, {
+      type:'bar',
+      data:{labels, datasets:[{label:'출현 횟수', data:labels.map(i=>freq[i]||0)}]},
+      options:{responsive:true, maintainAspectRatio:false}
+    });
+  }
+  function buildCoMap(rows){
+    const m = new Map();
+    rows.forEach(r=>{
+      const a = r.nums.slice().sort((x,y)=>x-y);
+      for(let i=0;i<a.length;i++){ for(let j=i+1;j<a.length;j++){ const k=a[i]+','+a[j]; m.set(k,(m.get(k)||0)+1); } }
+    });
+    return m;
+  }
+  function drawNetwork(map, topK){
+    const arr = Array.from(map.entries()).map(([k,v])=>({k,v})).sort((a,b)=>b.v-a.v).slice(0, topK);
+    const nodes = new Set(); arr.forEach(e=>e.k.split(',').forEach(x=>nodes.add(+x)));
+    const ndata = Array.from(nodes).map(n=>({id:n,label:String(n),value:n}));
+    const edata = arr.map(e=>{ const [a,b]=e.k.split(',').map(Number); return {from:a,to:b,value:e.v,width:1+e.v}; });
+    const data = { nodes:new vis.DataSet(ndata), edges:new vis.DataSet(edata) };
+    new vis.Network(byId('network'), data, { nodes:{shape:'dot'}, edges:{smooth:true} });
+  }
+  function frequency(rows){ const f = Array(46).fill(0); rows.forEach(r=>r.nums.forEach(n=>f[n]++)); return f; }
+  function computeFeatures(rows){
+    return rows.map(r=>{
+      const sum = r.nums.reduce((a,b)=>a+b,0);
+      const odd = r.nums.filter(n=>n%2===1).length;
+      const high = r.nums.filter(n=>n>23).length;
+      const arr = r.nums.slice().sort((a,b)=>a-b);
+      let consec=0; for(let i=1;i<arr.length;i++){ if(arr[i]===arr[i-1]+1) consec++; }
+      return {...r, sum, odd, even:6-odd, high, low:6-high, consec};
+    });
+  }
+  function pickWeighted(freq, strategy){
+    const maxf = Math.max(...freq);
+    const pool = [];
+    for(let n=1;n<=45;n++){
+      const base = (freq[n]/maxf)||0.0001;
+      let w = base; if (strategy==='conservative') w=Math.pow(base,.7); else if (strategy==='high_risk') w=Math.pow(base,1.6);
+      const count = Math.max(1, Math.floor(w*100)); for(let i=0;i<count;i++) pool.push(n);
+    }
+    const set=new Set(); while(set.size<6) set.add(pool[Math.floor(Math.random()*pool.length)]);
+    return Array.from(set).sort((a,b)=>a-b);
+  }
+  function scoreCombo(nums, freq, centers={sum:145, odd:3, high:3}){
+    const s = nums.reduce((a,b)=>a+b,0);
+    const odd = nums.filter(n=>n%2===1).length;
+    const high = nums.filter(n=>n>23).length;
+    const risk = Math.abs(s-centers.sum)/25 + Math.abs(odd-centers.odd)/3 + Math.abs(high-centers.high)/3;
+    const maxf = Math.max(...freq);
+    const reward = nums.reduce((acc,n)=> acc + (maxf - (freq[n]||0))/maxf, 0);
+    const score = reward/(risk+1e-3);
+    return {risk,reward,score,sum:s,odd,high};
+  }
+  function recommendBulk(freq, opts){
+    const {strategy,trials,sumMin,sumMax,oddMin,oddMax,highMin,highMax} = opts;
+    const arr=[]; const seen=new Set();
+    for(let i=0;i<trials;i++){
+      const nums = pickWeighted(freq, strategy);
+      const k = nums.join(','); if (seen.has(k)) continue; seen.add(k);
+      const {risk,reward,score,sum,odd,high} = scoreCombo(nums,freq);
+      if (sum>=sumMin && sum<=sumMax && odd>=oddMin && odd<=oddMax && high>=highMin && high<=highMax){ arr.push({nums,risk,reward,score}); }
+    }
+    return arr.sort((a,b)=>b.score-a.score).slice(0,20);
+  }
+  function adaptive(stats){
+    const list = Object.entries(stats).map(([name,arr])=>{
+      if (!arr.length) return {name, meanScore:-1, rr:-1, meanRisk:999};
+      const ms = arr.reduce((a,b)=>a+b.score,0)/arr.length;
+      const mr = arr.reduce((a,b)=>a+b.risk,0)/arr.length;
+      const mw = arr.reduce((a,b)=>a+b.reward,0)/arr.length;
+      return {name, meanScore:ms, rr: mw/(mr+1e-3), meanRisk:mr};
+    });
+    list.sort((a,b)=> b.meanScore-a.meanScore || b.rr-a.rr || a.meanRisk-b.meanRisk);
+    return list[0];
+  }
+
+  let LATEST=null, ALL=[], BASE=[], FREQ=[], FULL_READY=false, latestPicks={}, recStats={};
+
+  function updateKPIs(rows){
+    const avg = a => a.reduce((x,y)=>x+y,0)/a.length;
+    byId('kAll').textContent = rows.length;
+    byId('kSum').textContent = avg(rows.map(x=>x.sum)).toFixed(1);
+    byId('kOdd').textContent = avg(rows.map(x=>x.odd)).toFixed(2);
+  }
+  function refreshFreqAndTop(){
+    drawFreqChart(FREQ);
+    const top = Array.from({length:45}, (_,i)=>({번호:i+1, 빈도:FREQ[i+1]})).sort((a,b)=>b.빈도-a.빈도).slice(0,10);
+    renderTable(byId('topFreq'), top, ['번호','빈도']);
+  }
+  function renderRecentTable(){
+    const k = parseInt(byId('showCount').value,10) || 10;
+    const src = (ALL.length ? ALL : BASE);
+    const rows = src.slice(-k).reverse().map(r=>({
+      '회차': r.round,
+      '추첨일': r.date,
+      '당첨번호': `<code class="mono">${r.nums.join(', ')}</code>`,
+      '합계': r.sum, '홀수': r.odd, '고번호': r.high
+    }));
+    renderTable(byId('recentTable'), rows, ['회차','추첨일','당첨번호','합계','홀수','고번호']);
+  }
+  function populateRoundList(maxRound){
+    const dl = byId('roundsList'); dl.innerHTML = '';
+    const start = Math.max(1, maxRound - 499);
+    for(let rn=maxRound; rn>=start; rn--){
+      const opt = document.createElement('option'); opt.value = rn; dl.appendChild(opt);
+    }
+  }
+  function jumpToRound(){
+    const rn = parseInt(byId('roundJump').value,10);
+    if (!rn) return;
+    const find = (ALL.length ? ALL : BASE).find(x=>x.round===rn);
+    if (!find){ byId('jumpResult').textContent = '해당 회차가 현재 메모리에 없음(배경 로딩 중일 수 있음)'; return; }
+    byId('jumpResult').innerHTML = `회차 <b>${find.round}</b> — 추첨일 ${find.date} — 번호 <code class="mono">${find.nums.join(', ')}</code>`;
+  }
+  function drawNetHandler(){
+    const N = parseInt(byId('lastN').value,10);
+    const topK = parseInt(byId('topK').value,10);
+    const src = (ALL.length ? ALL : BASE);
+    const map = buildCoMap(src.slice(-N));
+    drawNetwork(map, topK);
+  }
+  function runRecs(){
+    const trials = parseInt(byId('trials').value,10);
+    const sumMin = parseInt(byId('sumMin').value,10);
+    const sumMax = parseInt(byId('sumMax').value,10);
+    const oddMin = parseInt(byId('oddMin').value,10);
+    const oddMax = parseInt(byId('oddMax').value,10);
+    const highMin = parseInt(byId('highMin').value,10);
+    const highMax = parseInt(byId('highMax').value,10);
+    const strategies=['conservative','balanced','high_risk'];
+    const recWrap = byId('recs'); recWrap.innerHTML=''; recStats={}; latestPicks={};
+    for(const s of strategies){
+      const arr = recommendBulk(FREQ,{strategy:s,trials,sumMin,sumMax,oddMin,oddMax,highMin,highMax});
+      recStats[s]=arr;
+      const box=document.createElement('div'); box.className='card'; box.innerHTML=`<b>${s.toUpperCase()}</b><div id="t-${s}"></div>`; recWrap.appendChild(box);
+      if (arr.length){
+        latestPicks[s]=arr[0].nums;
+        const rows = arr.slice(0,5).map(o=>({조합:`<code class="mono">${o.nums.join(', ')}</code>`,Risk:o.risk.toFixed(3),Reward:o.reward.toFixed(3),Score:o.score.toFixed(3)}));
+        renderTable(box.querySelector(`#t-${s}`), rows, ['조합','Risk','Reward','Score']);
+      }else{
+        box.querySelector(`#t-${s}`).innerHTML = "<div class='muted small'>추천 없음</div>";
+      }
+    }
+    const best = adaptive(recStats);
+    byId('asName').textContent = best?.name?.toUpperCase() || '-';
+    byId('asScore').textContent = best?.meanScore>0 ? best.meanScore.toFixed(3) : '-';
+    byId('asRR').textContent = best?.rr>0 ? best.rr.toFixed(3) : '-';
+  }
+
+  async function init(){
+    const latest = await api('/api/latest'); const LATEST = latest.latest; byId('latest').textContent = LATEST;
+    populateRoundList(LATEST);
+    const start = Math.max(1, LATEST - 199);
+    const j = await api(`/api/all?start=${start}&end=${LATEST}`);
+    BASE = computeFeatures(j.rows);
+    FREQ = frequency(BASE);
+    document.getElementById('dataStatus').textContent = '최근 200회';
+    renderRecentTable();
+    drawNetHandler();
+    runRecs();
+    updateKPIs(BASE);
+    refreshFreqAndTop();
+    document.getElementById('loadAll').addEventListener('click', loadFullInBackground);
+    document.getElementById('netBtn').addEventListener('click', drawNetHandler);
+    document.getElementById('runRecs').addEventListener('click', runRecs);
+    document.getElementById('refreshTable').addEventListener('click', renderRecentTable);
+    document.getElementById('jumpBtn').addEventListener('click', jumpToRound);
+  }
+  async function loadFullInBackground(){
+    try{
+      document.getElementById('dataStatus').textContent = '전체(로딩 중)';
+      const full = await api('/api/all');
+      ALL = computeFeatures(full.rows);
+      FREQ = frequency(ALL);
+      document.getElementById('dataStatus').textContent = '전체(완료)';
+      updateKPIs(ALL);
+      refreshFreqAndTop();
+      drawNetHandler();
+      runRecs();
+    }catch(e){
+      document.getElementById('dataStatus').textContent = '최근 200회(유지)';
+      console.error(e);
+    }
+  }
+  init();
+</script>
+</body>
+</html>
