@@ -52,10 +52,12 @@
     .predict-grid{display:grid;gap:12px}
     @media(min-width:980px){.predict-grid{grid-template-columns:1fr 1fr}}
     .predict-left > .card{margin-bottom:8px}
+
+    /* 그룹 빈도 카드 */
+    .group-grid{display:grid;gap:8px}
+    @media(min-width:980px){.group-grid{grid-template-columns:1fr 1fr}}
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.6/vis-network.min.js"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.6/vis-network.min.css"/>
 </head>
 <body>
   <header>
@@ -110,8 +112,14 @@
         <label>상위 간선 <input type="number" id="topK" value="40" min="10" max="120" step="5"></label>
         <button id="netBtn">네트워크 갱신</button>
       </div>
-      <div id="network" style="height:380px;background:rgba(255,255,255,.02);border-radius:10px;margin-top:8px"></div>
+      <div id="network" style="height:380px;background:rgba(255,255,255,.02);border-radius:10px;margin-top:8px;display:block"></div>
       <div id="netErr" class="err" style="display:none"></div>
+    </section>
+
+    <section class="card" style="grid-column:1/-1">
+      <div class="sec-title"><h2>🟡🔵🔴🟣🟢 구간별 번호 빈도(오름차순)</h2><span class="muted small">(1~10 / 11~20 / 21~30 / 31~40 / 41~45)</span></div>
+      <div class="group-grid" id="groupFreqWrap"></div>
+      <div id="groupErr" class="err" style="display:none"></div>
     </section>
 
     <section class="card" style="grid-column:1/-1">
@@ -171,6 +179,35 @@
     const api = async (p)=>{ const r = await fetch(p, {cache:'no-store'}); if(!r.ok) throw new Error(await r.text()); return r.json(); };
     const safe = (fn, onErrId)=>{ try{ fn(); } catch(e){ if(onErrId){ const el=byId(onErrId); el.style.display='block'; el.textContent = '표시 오류: '+e.message; } console.error(e); } };
 
+    // vis-network lazy loader (CSP/차단 대응)
+    let _visReady = null;
+    function ensureVis(){
+      if (window.vis && window.vis.Network) return Promise.resolve();
+      if (_visReady) return _visReady;
+      _visReady = new Promise((resolve,reject)=>{
+        function done(){ (window.vis && window.vis.Network) ? resolve() : reject(new Error('vis-network 로드 실패')); }
+        const s1 = document.createElement('script');
+        s1.src = 'https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.6/vis-network.min.js';
+        s1.onload = () => setTimeout(()=> done(), 0);
+        s1.onerror = () => {
+          // fallback
+          const s2 = document.createElement('script');
+          s2.src = 'https://unpkg.com/vis-network@9.1.6/dist/vis-network.min.js';
+          s2.onload = () => setTimeout(()=> done(), 0);
+          s2.onerror = () => reject(new Error('vis-network CDN 차단'));
+          document.head.appendChild(s2);
+        };
+        document.head.appendChild(s1);
+
+        // CSS도 보장
+        const l = document.createElement('link');
+        l.rel='stylesheet';
+        l.href='https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.6/vis-network.min.css';
+        document.head.appendChild(l);
+      });
+      return _visReady;
+    }
+
     function ballClass(n){
       if(n>=1 && n<=10) return 'b-1';
       if(n>=11 && n<=20) return 'b-2';
@@ -186,7 +223,7 @@
     function renderTable(el, rows, headers){
       if(!rows || !rows.length){ el.innerHTML = '<div class="muted small">데이터 없음</div>'; return; }
       el.innerHTML = '<table><thead><tr>' + headers.map(h=>`<th>${h}</th>`).join('') + '</tr></thead><tbody>' +
-        rows.map(r=>'<tr>' + headers.map(h=>`<td>${r[h]??''}</td>`).join('') + '</tr>').join('') + '</tbody></table>';
+        rows.map(r=>'<tr>' + headers.map(h=>`<td>'+String(r[h]??'')+'</td>`).join('') + '</tr>').join('') + '</tbody></table>';
     }
 
     // ===== 분석 함수 =====
@@ -221,7 +258,8 @@
         options:{responsive:true, maintainAspectRatio:false}
       });
     }
-    function drawNetwork(map, topK){
+    async function drawNetwork(map, topK){
+      await ensureVis();
       const arr = Array.from(map.entries()).map(([k,v])=>({k,v})).sort((a,b)=>b.v-a.v).slice(0, topK);
       const nodes = new Set(); arr.forEach(e=>e.k.split(',').forEach(x=>nodes.add(+x)));
       const ndata = Array.from(nodes).map(n=>({id:n,label:String(n),value:n}));
@@ -350,8 +388,36 @@
         drawFreqChart(FREQ);
         const top = Array.from({length:45}, (_,i)=>({번호:i+1, 빈도:FREQ[i+1]})).sort((a,b)=>b.빈도-a.빈도).slice(0,10);
         renderTable(byId('topFreq'), top, ['번호','빈도']);
+        // 그룹 빈도
+        renderGroupFreq();
       }catch(e){ byId('freqErr').style.display='block'; byId('freqErr').textContent='빈도 표시 오류: '+e.message; }
     }
+
+    function renderGroupFreq(){
+      try{
+        const wrap = byId('groupFreqWrap'); wrap.innerHTML='';
+        const groups = [
+          {name:'1~10', from:1,to:10},
+          {name:'11~20', from:11,to:20},
+          {name:'21~30', from:21,to:30},
+          {name:'31~40', from:31,to:40},
+          {name:'41~45', from:41,to:45},
+        ];
+        groups.forEach(g=>{
+          const rows = [];
+          for(let n=g.from;n<=g.to;n++){
+            rows.push({번호: `<span class="ball ${ballClass(n)}">${n}</span>`, 빈도: FREQ[n]||0});
+          }
+          const card = document.createElement('div');
+          card.className='card';
+          card.innerHTML = `<b>${g.name}</b><div id="g-${g.from}"></div>`;
+          wrap.appendChild(card);
+          renderTable(card.querySelector('#g-'+g.from), rows, ['번호','빈도']);
+        });
+        byId('groupErr').style.display='none';
+      }catch(e){ byId('groupErr').style.display='block'; byId('groupErr').textContent='구간 빈도 표시 오류: '+e.message; }
+    }
+
     function renderRecentTable(){
       try{
         const k = parseInt(byId('showCount').value,10) || 10;
@@ -382,13 +448,13 @@
         byId('jumpResult').innerHTML = `회차 <b>${find.round}</b> — 추첨일 ${find.date} — 번호 ${ballsHtml(find.nums)}`;
       }catch(e){ byId('jumpErr').style.display='block'; byId('jumpErr').textContent='회차 점프 오류: '+e.message; }
     }
-    function drawNetHandler(){
+    async function drawNetHandler(){
       try{
         const N = parseInt(byId('lastN').value,10);
         const topK = parseInt(byId('topK').value,10);
         const src = (ALL.length ? ALL : BASE);
         const map = buildCoMap(src.slice(-N));
-        drawNetwork(map, topK);
+        await drawNetwork(map, topK);
         byId('netErr').style.display='none';
       }catch(e){ byId('netErr').style.display='block'; byId('netErr').textContent='네트워크 표시 오류: '+e.message; }
     }
@@ -509,7 +575,7 @@
         FREQ = frequency(ALL);
         byId('dataStatus').textContent = '전체(완료)';
         refreshFreqAndTop();
-        drawNetHandler();
+        await drawNetHandler();
         runRecs();
         updateKPIs(ALL);
         runPredict();
