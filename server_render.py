@@ -1,4 +1,4 @@
-# server_render.py — robust fail-open build
+# server_render.py — robust fail-open build (stable)
 import os, time, asyncio, random, logging
 from typing import Optional, List, Dict, Any
 from pathlib import Path
@@ -13,12 +13,13 @@ from fastapi.staticfiles import StaticFiles
 APP_DIR = Path(__file__).resolve().parent
 STATIC_DIR = APP_DIR / "static"
 
+# 정적 폴더/인덱스 자동 보장 (없어도 앱이 죽지 않게)
 DEFAULT_HTML = """<!doctype html>
 <meta charset="utf-8">
 <title>로또 예측</title>
 <body style="font-family:sans-serif;background:#0f172a;color:#e5e7eb;margin:0;padding:24px">
   <h1>정적 파일 준비 중</h1>
-  <p>리포지토리에 <code>static/index.html</code>을 커밋하면 UI가 표시됩니다.</p>
+  <p><code>static/index.html</code>을 커밋하면 UI가 표시됩니다.</p>
 </body>
 """
 
@@ -26,7 +27,7 @@ STATIC_DIR.mkdir(parents=True, exist_ok=True)
 if not (STATIC_DIR / "index.html").exists():
     (STATIC_DIR / "index.html").write_text(DEFAULT_HTML, encoding="utf-8")
 
-app = FastAPI(title="Lotto Predictor", version="2.1.2")
+app = FastAPI(title="Lotto Predictor", version="2.1.3")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 app.add_middleware(GZipMiddleware, minimum_size=500)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -34,6 +35,7 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 HDRS = {"User-Agent": "Mozilla/5.0"}
 BASE_URL = "https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo="
 
+# 간단 캐시
 TTL_SEC = 1800
 _round_cache: Dict[int, Dict[str, Any]] = {}
 _round_ts: Dict[int, float] = {}
@@ -113,7 +115,7 @@ def frequency(rows: List[Dict[str, Any]]) -> List[int]:
             f[n]+=1
     return f
 
-def tier_marks(freq: List[int]) -> Dict[str, Any]]:
+def tier_marks(freq: List[int]) -> Dict[str, Any]:
     counts = [freq[n] for n in range(1,46)]
     if not counts or max(counts)==0:
         return {"top1": [], "top2": [], "low": [], "values": {"top1": None, "top2": None, "low": None}}
@@ -169,20 +171,21 @@ async def api_all(start: int = 1, end: Optional[int] = None):
 
 @app.get("/api/stats")
 async def api_stats(last: int = Query(50, ge=5, le=2000), background_tasks: BackgroundTasks = None):
+    """
+    핵심: 외부 실패해도 항상 200 + 유효 JSON 반환(Fail-Open).
+    """
     try:
         latest = await get_latest_round()
         start = max(1, latest - (last - 1))
         rows = []
         try:
+            # 2초 넘으면 데모 반환 + 백그라운드 적재
             rows = await asyncio.wait_for(fetch_range(start, latest, batch_size=25), timeout=2.0)
         except asyncio.TimeoutError:
             rows = []
-        if rows:
-            payload = build_payload(rows)
-        else:
-            payload = fallback_demo()
-            if background_tasks:
-                background_tasks.add_task(hydrate_background, latest or 1200)
+        payload = build_payload(rows) if rows else fallback_demo()
+        if background_tasks and not rows:
+            background_tasks.add_task(hydrate_background, latest or 1200)
         return JSONResponse(payload, headers={"Cache-Control": "public, max-age=60"})
     except Exception:
         return JSONResponse(fallback_demo(), headers={"Cache-Control": "no-store"})
@@ -192,7 +195,7 @@ async def hydrate_background(latest: int):
         start = max(1, latest - 199)
         rows = await fetch_range(start, latest, batch_size=25)
         if rows:
-            payload = build_payload(rows)
+            _ = build_payload(rows)  # 필요시 서버 전역 캐시에 올릴 수 있음
     except Exception:
         pass
 
