@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>로또 예측 — 최적화/재배치(2025)</title>
+  <style>
+    :root { --bg:#0f172a; --card:#111827; --text:#e5e7eb; --muted:#9ca3af; --accent:#60a5fa; --border:rgba(255,255,255,.08); }
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI","Noto Sans KR",Arial}
+    .container{max-width:1200px;margin:0 auto;padding:12px}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px}
+    .grid{display:grid;gap:12px} @media(min-width:980px){.grid-2{grid-template-columns:1fr 1fr}.grid-3{grid-template-columns:repeat(3,1fr)}}
+    .sec-title{display:flex;align-items:center;gap:8px}
+    h1,h2{margin:0} .muted{color:var(--muted)} .small{font-size:12px}
+    .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    button{background:var(--accent);color:#0b1220;border:none;padding:8px 12px;border-radius:10px;font-weight:700;cursor:pointer}
+    input,select{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:var(--text);border-radius:8px;padding:6px 8px}
+    table{width:100%;border-collapse:collapse;font-size:14px} th,td{padding:8px 10px;border-bottom:1px solid rgba(255,255,255,.06)} th{text-align:left;color:var(--muted)}
+    .kpi{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+    .kpi .item{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);padding:10px;border-radius:10px}
+    .kpi .label{color:var(--muted);font-size:12px} .kpi .value{font-size:18px;font-weight:800;margin-top:2px}
+    .balls{display:flex;gap:6px;flex-wrap:wrap}
+    .ball{position:relative;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;border:1px solid rgba(0,0,0,.2);text-shadow:0 1px 0 rgba(255,255,255,.4);}
+    .b-1{background:#facc15;color:#111} .b-2{background:#60a5fa;color:#111} .b-3{background:#ef4444;color:#111} .b-4{background:#a78bfa;color:#111} .b-5{background:#34d399;color:#111}
+    .ball.top1::after,.ball.top2::after,.ball.low::after{content:attr(data-mark);position:absolute;top:-6px;right:-6px;font-size:10px;font-weight:900;color:#fff;padding:2px 4px;border-radius:8px;line-height:1;box-shadow:0 0 0 1px rgba(0,0,0,.25)}
+    .ball.top1::after{background:#16a34a}.ball.top2::after{background:#2563eb}.ball.low::after{background:#ef4444}
+    .legend .chip{display:inline-block;border-radius:6px;padding:4px 8px;margin-right:6px;border:1px solid rgba(255,255,255,.1)}
+    .chip.top1{background:rgba(22,163,74,.2)} .chip.top2{background:rgba(37,99,235,.2)} .chip.low{background:rgba(239,68,68,.2)}
+    .group-grid{display:grid;gap:8px} @media(min-width:980px){.group-grid{grid-template-columns:repeat(5,1fr)}}
+  </style>
+</head>
+<body>
+  <div class="container" style="margin-top:12px">
+    <div class="row">
+      <span class="small muted">최신 회차: <b id="latest">-</b></span>
+      <span class="small muted">데이터: <b id="dataStatus">로딩 중...</b></span>
+      <button id="loadAll" class="small" style="margin-left:auto">전체 데이터 로드(백그라운드)</button>
+    </div>
+
+    <section class="card" style="margin-top:12px">
+      <div class="sec-title"><h2>🎲 예측 번호 뽑기</h2><span class="small muted">데이터 기반 5세트 추천</span></div>
+      <div class="row small" style="margin-top:6px">
+        <label>최근 반영 범위(N회): <input id="predN" type="number" value="30" min="10" max="100" step="5"></label>
+        <label>빈도/공출현 가중(0~1): <input id="alpha" type="number" value="0.6" min="0" max="1" step="0.1"></label>
+        <button id="predictBtn">예측 번호 뽑기</button>
+      </div>
+      <div class="grid grid-2" style="margin-top:8px">
+        <div id="predBalls"><div class="small muted">데이터를 불러오는 중입니다...</div></div>
+        <div class="card">
+          <b>근거 및 확률(%) (Rationale & Probability)</b>
+          <div class="small muted" style="margin-top:6px">* 빈도 기여, 공출현 기여, 구조 적합도, 종합(0~100)</div>
+          <div id="predTable" style="margin-top:8px"></div>
+        </div>
+      </div>
+      <div id="predErr" class="small" style="color:#f87171;display:none"></div>
+    </section>
+
+    <section class="card" style="margin-top:12px">
+      <div class="sec-title"><h2>🏆 이번 주 추천 전략 (Weekly Adaptive)</h2></div>
+      <div class="small muted">Score = Reward ÷ (Risk + ε) — 위험 대비 효율이 높은 전략을 우선합니다.</div>
+      <div class="kpi" style="margin-top:10px">
+        <div class="item"><div class="label">전략명</div><div id="wName" class="value">-</div></div>
+        <div class="item"><div class="label">평균 Score</div><div id="wScore" class="value">-</div></div>
+        <div class="item"><div class="label">보상/위험</div><div id="wRR" class="value">-</div></div>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:12px">
+      <div class="sec-title"><h2>🎯 전략별 추천 (상세)</h2><span class="small muted">각 전략 상위 5세트 · 오름차순</span></div>
+      <div id="recs" class="grid grid-3" style="margin-top:8px"></div>
+      <div class="small muted" style="margin-top:8px">Risk: 변동성 · Reward: 예상 수익성 · Score: 종합 효율</div>
+    </section>
+
+    <section class="card" style="margin-top:12px">
+      <div class="sec-title"><h2>📋 최근 10회 결과</h2></div>
+      <div id="recentTable" style="margin-top:6px"></div>
+      <div class="card" style="margin-top:12px">
+        <div class="sec-title"><b>회차 점프</b></div>
+        <div class="row small" style="margin-top:6px">
+          <input type="text" id="roundJump" list="roundsList" placeholder="회차 번호 입력/선택">
+          <datalist id="roundsList"></datalist>
+          <button id="jumpBtn">이동</button>
+        </div>
+        <div id="jumpResult" class="small muted" style="margin-top:8px">회차를 선택하면 번호가 표시됩니다.</div>
+        <div id="jumpErr" class="small" style="color:#f87171;display:none"></div>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:12px">
+      <div class="sec-title"><h2>🟡🔵🔴🟣🟢 구간별 번호 빈도(오름차순)</h2>
+        <div class="row small" style="margin-left:auto">
+          <label>조회 기준(최근 N회): <input id="freqN" type="number" min="10" max="2000" step="10" value="50"></label>
+          <label>빠른 선택: 
+            <select id="freqPreset">
+              <option value="10">10</option>
+              <option value="20">20</option>
+              <option value="50" selected>50</option>
+              <option value="100">100</option>
+              <option value="200">200</option>
+            </select>
+          </label>
+          <button id="freqApply">조회</button>
+        </div>
+      </div>
+      <div class="legend" style="margin:8px 0 6px 0">
+        <span class="chip top1">Top1(최고 빈도대)</span>
+        <span class="chip top2">Top2(차상위 빈도대)</span>
+        <span class="chip low">Lowest(최저 빈도대)</span>
+        <span class="small muted" style="margin-left:8px">* 각 숫자공에 T1/T2/L로 표시</span>
+      </div>
+      <div class="group-grid" id="groupFreqWrap"></div>
+    </section>
+  </div>
+
+<script>
+const byId = id => document.getElementById(id);
+const api = async (p)=>{ const r = await fetch(p, {cache:'no-store'}); if(!r.ok) throw new Error(await r.text()); return r.json(); }
+
+let LATEST=null, FREQ=[], RECENT10=[], ALL=[], TIERS=null;
+
+const markClass = (m)=> m==='top1'?'top1' : m==='top2'?'top2' : m==='low'?'low' : '';
+function ballsHtml(nums, markMap=null, bonus=null){
+  const cls = n => n<=10?'b-1': n<=20?'b-2': n<=30?'b-3': n<=40?'b-4':'b-5';
+  const a = nums.map(n=>{
+    const m = markMap? markMap.get(n): null;
+    const mCls = m? ' '+markClass(m): '';
+    const mLbl = m==='top1'?'T1': m==='top2'?'T2': m==='low'?'L': '';
+    const attr = mLbl? ` data-mark="${mLbl}"`: '';
+    return `<span class="ball ${cls(n)}${mCls}"${attr}>${n}</span>`;
+  }).join('');
+  const b = (bonus && !nums.includes(bonus)) ? `<span class="ball b-5">${bonus}</span>`:'';
+  return `<div class="balls">${a}${b}</div>`;
+}
+
+function buildMarkMap(freq){
+  const counts = []; for(let n=1;n<=45;n++) counts.push(freq[n]||0);
+  const uniq = Array.from(new Set(counts)).sort((a,b)=>b-a);
+  const top1Val = uniq[0], top2Val = uniq.length>=2? uniq[1]: null, lowVal = uniq[uniq.length-1];
+  const map = new Map();
+  for(let n=1;n<=45;n++){
+    const v = freq[n]||0;
+    if (v===top1Val) map.set(n,'top1');
+    else if (top2Val!==null && v===top2Val) map.set(n,'top2');
+    else if (v===lowVal) map.set(n,'low');
+  }
+  return map;
+}
+
+function renderTable(el, rows, headers){
+  if(!rows || !rows.length){ el.innerHTML = '<div class="small muted">데이터 없음</div>'; return; }
+  el.innerHTML = '<table><thead><tr>'+headers.map(h=>`<th>${h}</th>`).join('')+'</tr></thead><tbody>' +
+    rows.map(r=>'<tr>'+headers.map(h=>`<td>${r[h]??''}</td>`).join('')+'</tr>').join('')+'</tbody></table>';
+}
+
+function renderRecent(){
+  const markMap = buildMarkMap(FREQ);
+  const rows = RECENT10.map(r=>{
+    return {
+      '회차': r.round,
+      '추첨일': r.date,
+      '당첨번호': ballsHtml(r.nums, markMap),
+      '합계': r.sum,
+      '홀수': r.odd,
+      '짝수': r.even,
+      '고번호(23+)': r.high
+    }
+  });
+  renderTable(byId('recentTable'), rows, ['회차','추첨일','당첨번호','합계','홀수','짝수','고번호(23+)']);
+}
+
+function renderGroupFreq(){
+  const wrap = byId('groupFreqWrap'); wrap.innerHTML='';
+  const markMap = buildMarkMap(FREQ);
+  const groups=[
+    {name:'1~10', from:1,to:10},
+    {name:'11~20', from:11,to:20},
+    {name:'21~30', from:21,to:30},
+    {name:'31~40', from:31,to:40},
+    {name:'41~45', from:41,to:45},
+  ];
+  groups.forEach(g=>{
+    const card = document.createElement('div'); card.className='card';
+    card.innerHTML = `<b>${g.name}</b><div id="g-${g.from}"></div>`;
+    wrap.appendChild(card);
+    const rows = [];
+    for(let n=g.from;n<=g.to;n++){
+      rows.push({'번호': ballsHtml([n], markMap), '빈도': FREQ[n]||0});
+    }
+    const el = card.querySelector('#g-'+g.from);
+    el.innerHTML = '<table><thead><tr><th>번호</th><th>빈도</th></tr></thead><tbody>' +
+      rows.map(r=>`<tr><td>${r['번호']}</td><td>${r['빈도']}</td></tr>`).join('') + '</tbody></table>';
+  });
+}
+
+function pickWeighted(freq, strategy){
+  const maxf = Math.max(...freq);
+  const pool=[];
+  for(let n=1;n<=45;n++){
+    const base=(freq[n]/maxf)||0.0001;
+    let w=base;
+    if (strategy==='conservative') w=Math.pow(base,.7);
+    else if (strategy==='high_risk') w=Math.pow(base,1.6);
+    const c = Math.max(1, Math.floor(w*100));
+    for(let i=0;i<c;i++) pool.push(n);
+  }
+  const set=new Set(); while(set.size<6) set.add(pool[Math.floor(Math.random()*pool.length)]);
+  return Array.from(set).sort((a,b)=>a-b);
+}
+function scoreCombo(nums, freq, centers={sum:145, odd:3, high:3}){
+  const s = nums.reduce((a,b)=>a+b,0);
+  const odd = nums.filter(n=>n%2===1).length;
+  const high = nums.filter(n=>n>23).length;
+  const risk = Math.abs(s-centers.sum)/25 + Math.abs(odd-centers.odd)/3 + Math.abs(high-centers.high)/3;
+  const maxf = Math.max(...freq);
+  const reward = nums.reduce((acc,n)=> acc + (maxf - (freq[n]||0))/maxf, 0);
+  const score = reward/(risk+1e-3);
+  return {risk,reward,score,sum:s,odd,high};
+}
+function recommendBulk(freq, strategy, trials=12000){
+  const arr=[]; const seen=new Set();
+  for(let i=0;i<trials;i++){
+    const nums = pickWeighted(freq, strategy);
+    const k = nums.join(','); if (seen.has(k)) continue; seen.add(k);
+    const m = scoreCombo(nums, freq);
+    arr.push({nums, ...m});
+  }
+  arr.sort((a,b)=>b.score-a.score);
+  return arr.slice(0,5);
+}
+
+function renderRecs(){
+  const strategies=['conservative','balanced','high_risk'];
+  const labels={conservative:'보수형 (Conservative)', balanced:'균형형 (Balanced)', high_risk:'고위험형 (High-Risk)'};
+  const wrap = byId('recs'); wrap.innerHTML='';
+  const stats={};
+  strategies.forEach(s=>{
+    const list = recommendBulk(FREQ, s, 15000);
+    stats[s]=list;
+    const card = document.createElement('div'); card.className='card';
+    const markMap = buildMarkMap(FREQ);
+    const box = document.createElement('div'); box.style.marginTop='6px';
+    card.innerHTML = `<b>${labels[s]}</b>`;
+    list.forEach((it,idx)=>{
+      const row = document.createElement('div'); row.className='row'; row.style.marginTop='4px';
+      row.innerHTML = `<span class="small muted">#${idx+1}</span> ${ballsHtml(it.nums, markMap)} <span class="small muted">· Risk ${it.risk.toFixed(3)} · Reward ${it.reward.toFixed(3)} · Score ${it.score.toFixed(3)}</span>`;
+      box.appendChild(row);
+    });
+    card.appendChild(box);
+    wrap.appendChild(card);
+  });
+  const pick = (function(stats){
+    const list = Object.entries(stats).map(([name,arr])=>{
+      if (!arr.length) return {name, meanScore:-1, rr:-1, meanRisk:999};
+      const ms = arr.reduce((a,b)=>a+b.score,0)/arr.length;
+      const mr = arr.reduce((a,b)=>a+b.risk,0)/arr.length;
+      const mw = arr.reduce((a,b)=>a+b.reward,0)/arr.length;
+      return {name, meanScore:ms, rr: mw/(mr+1e-3), meanRisk:mr};
+    });
+    list.sort((a,b)=> b.meanScore-a.meanScore || b.rr-a.rr || a.meanRisk-b.meanRisk);
+    return list[0];
+  })(stats);
+  byId('wName').textContent = pick?.name ? (pick.name==='balanced'?'균형형 (Balanced)':pick.name==='conservative'?'보수형 (Conservative)':'고위험형 (High-Risk)'):'-';
+  byId('wScore').textContent = pick?.meanScore>0 ? pick.meanScore.toFixed(3) : '-';
+  byId('wRR').textContent = pick?.rr>0 ? pick.rr.toFixed(3) : '-';
+}
+
+function renderPredict(){
+  try{
+    const N = parseInt(byId('predN').value,10) || 30;
+    const alpha = parseFloat(byId('alpha').value) || 0.6;
+    const markMap = buildMarkMap(FREQ);
+    const predWrap = byId('predBalls'); predWrap.innerHTML='';
+    const right = byId('predTable'); const rows=[];
+    const freqNorm = (function(freq){
+      const max = Math.max(...freq); const min=Math.min(...freq.slice(1));
+      return freq.map((v,i)=> i===0?0 : (max===min?1 : (v-min)/(max-min)));
+    })(FREQ);
+    const coMap = new Map();
+    RECENT10.slice(-N).forEach(r=>{
+      const a=r.nums.slice().sort((x,y)=>x-y);
+      for(let i=0;i<a.length;i++){ for(let j=i+1;j<a.length;j++){ const k=a[i]+','+a[j]; coMap.set(k,(coMap.get(k)||0)+1); } }
+    });
+    const coScore = (n)=>{ let s=0; for(let m=1;m<=45;m++){ if(m===n) continue; const k=(Math.min(m,n))+','+(Math.max(m,n)); s+=(coMap.get(k)||0);} return s; };
+    const coArr=[0]; for(let n=1;n<=45;n++) coArr.push(coScore(n));
+    const coNorm=(function(arr){ const max=Math.max(...arr), min=Math.min(...arr.slice(1)); return arr.map((v,i)=> i===0?0 : (max===min?1 : (v-min)/(max-min))); })(coArr);
+
+    const pickSet = (function(){
+      const sets=[]; const used=new Set();
+      for(let s=0;s<5;s++){
+        const pool=[];
+        for(let n=1;n<=45;n++){ const w = alpha*freqNorm[n] + (1-alpha)*coNorm[n] + 1e-6; const c=Math.max(1, Math.floor(w*100)); for(let i=0;i<c;i++) pool.push(n); }
+        for(const u of used){ const idx = pool.indexOf(u); if(idx>=0) pool.splice(idx,1); }
+        const set=new Set(); while(set.size<6) set.add(pool[Math.floor(Math.random()*pool.length)]);
+        const nums = Array.from(set).sort((a,b)=>a-b); nums.forEach(n=>used.add(n));
+        const fn = Math.round(nums.reduce((acc,n)=>acc+freqNorm[n],0)/6*100);
+        const cn = Math.round(nums.reduce((acc,n)=>acc+coNorm[n],0)/6*100);
+        const sFeat = (function(nums, freq){
+          const s = nums.reduce((a,b)=>a+b,0);
+          const odd = nums.filter(n=>n%2===1).length;
+          const high = nums.filter(n=>n>23).length;
+          const risk = Math.abs(s-145)/25 + Math.abs(odd-3)/3 + Math.abs(high-3)/3;
+          const maxf = Math.max(...freq);
+          const reward = nums.reduce((acc,n)=> acc + (maxf - (freq[n]||0))/maxf, 0);
+          const score = reward/(risk+1e-3);
+          return {risk,reward,score,sum:s,odd,high};
+        })(nums, FREQ);
+        const fit = 100 - (Math.min(Math.abs(sFeat.sum-145),25)/25*100*0.4 + Math.min(Math.abs(sFeat.odd-3),3)/3*100*0.3 + Math.min(Math.abs(sFeat.high-3),3)/3*100*0.3);
+        const overall = Math.round((alpha*fn + (1-alpha)*cn)*0.6 + fit*0.4);
+        sets.push({nums, rationale:{freq:fn, co:cn, fit:Math.round(fit), overall}});
+      }
+      return sets.sort((a,b)=>b.rationale.overall - a.rationale.overall);
+    })();
+
+    const mark = markMap;
+    pickSet.forEach((s,idx)=>{
+      const card = document.createElement('div'); card.className='card'; card.innerHTML = `<b>#${idx+1}</b> ${ballsHtml(s.nums, mark)}`;
+      predWrap.appendChild(card);
+      rows.push({'세트':'#'+(idx+1),'빈도기여%':s.rationale.freq+'%','공출현기여%':s.rationale.co+'%','구조적합%':s.rationale.fit+'%','종합%':s.rationale.overall+'%'});
+    });
+    renderTable(right, rows, ['세트','빈도기여%','공출현기여%','구조적합%','종합%']);
+    byId('predErr').style.display='none';
+  }catch(e){
+    byId('predErr').style.display='block';
+    byId('predErr').textContent='예측 오류: '+e.message;
+  }
+}
+
+function populateRoundList(maxRound){
+  const dl = byId('roundsList'); dl.innerHTML='';
+  const start = Math.max(1, maxRound - 499);
+  for(let rn=maxRound; rn>=start; rn--){
+    const opt = document.createElement('option'); opt.value = rn; dl.appendChild(opt);
+  }
+}
+
+async function applyStats(n){
+  try{
+    const j = await api('/api/stats?last='+n);
+    LATEST = j.latest; FREQ = j.freq; RECENT10 = j.recent10; TIERS = j.tiers;
+    byId('latest').textContent = LATEST;
+    byId('dataStatus').textContent = '최근 '+j.count+'회';
+    populateRoundList(LATEST);
+    renderRecent();
+    renderGroupFreq();
+    renderRecs();
+  }catch(e){ byId('dataStatus').textContent = '오류'; }
+}
+
+function jump(){
+  const rn = parseInt(byId('roundJump').value,10);
+  if (!rn) return;
+  byId('jumpErr').style.display='none';
+  const found = RECENT10.find(x=>x.round===rn);
+  if (!found){
+    byId('jumpErr').style.display='block';
+    byId('jumpErr').textContent='해당 회차는 현재 메모리에 없음. 상단 "전체 데이터 로드" 후 재확인.';
+    return;
+  }
+  const markMap = buildMarkMap(FREQ);
+  byId('jumpResult').innerHTML = `회차 <b>${found.round}</b> — 추첨일 ${found.date} — 번호 ${ballsHtml(found.nums, markMap)}`;
+}
+
+async function init(){
+  await applyStats(50);
+  renderPredict();
+  byId('predictBtn').addEventListener('click', renderPredict);
+  byId('jumpBtn').addEventListener('click', jump);
+  byId('freqPreset').addEventListener('change', (e)=>{ byId('freqN').value = e.target.value; });
+  byId('freqApply').addEventListener('click', async ()=>{ const n = parseInt(byId('freqN').value,10)||50; await applyStats(n); renderPredict(); });
+  byId('loadAll').addEventListener('click', async ()=>{
+    byId('dataStatus').textContent = '전체(로딩 중)';
+    try{
+      const latest = await api('/api/latest'); const end = latest.latest;
+      const all = await api('/api/all?start=1&end='+end);
+      ALL = all.rows;
+      byId('dataStatus').textContent = '전체(완료)';
+    }catch(e){ byId('dataStatus').textContent = '전체(실패)'; }
+  });
+}
+init();
+</script>
+</body>
+</html>
