@@ -1,1 +1,0 @@
-<!doctype html><meta charset='utf-8'><title>점검</title><button id='b'>/api/stats</button><pre id='o'></pre><script>document.getElementById('b').onclick=async()=>{const r=await fetch('/api/stats?last=20');document.getElementById('o').textContent=await r.text()+'\nstatus '+r.status;};</script>
