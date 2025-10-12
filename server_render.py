@@ -1,4 +1,4 @@
-# server_render.py — robust fail-open stable build
+# server_render.py — robust fail-open stable build (fixed)
 import os, time, asyncio, random, logging
 from typing import Optional, List, Dict, Any
 from pathlib import Path
@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 APP_DIR = Path(__file__).resolve().parent
 STATIC_DIR = APP_DIR / "static"
 
-# ---- 최소 인덱스 보장 (정적 누락으로 인한 크래쉬 방지)
+# ---- 최소 인덱스 보장 (정적 누락으로 인한 크래시 방지)
 DEFAULT_HTML = """<!doctype html>
 <meta charset="utf-8">
 <title>서비스 준비 중</title>
@@ -28,7 +28,7 @@ if not (STATIC_DIR / "index.html").exists():
     (STATIC_DIR / "index.html").write_text(DEFAULT_HTML, encoding="utf-8")
 
 # ---- 앱 & 미들웨어
-app = FastAPI(title="Lotto Predictor", version="2.1.0")
+app = FastAPI(title="Lotto Predictor", version="2.1.1")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 app.add_middleware(GZipMiddleware, minimum_size=500)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -100,7 +100,6 @@ async def get_latest_round(lo: int = 1, hi: int = 1500) -> int:
         return lo
     except Exception as e:
         log.warning(f"get_latest_round fallback: {e}")
-        # 외부 실패 시, 대략적인 최신값 추정(안전)
         return _latest_cache["value"] or 1200
 
 # ---- 파생 특성/빈도 계산
@@ -136,14 +135,14 @@ def tier_marks(freq: List[int]) -> Dict[str, Any]:
         "values": {"top1": top1, "top2": top2, "low": low}
     }
 
-def build_payload(rows: List[Dict, Any]]):
+def build_payload(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     feats = features(rows)
     freq = frequency(feats)
     tiers = tier_marks(freq)
     latest = max((r["round"] for r in rows), default=0)
     return {"latest": latest, "count": len(rows), "freq": freq, "tiers": tiers, "recent10": feats[-10:][::-1]}
 
-def fallback_demo():
+def fallback_demo() -> Dict[str, Any]:
     rnd = random.Random(42)
     rows=[]
     base_round=1200
