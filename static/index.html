@@ -1,133 +1,20 @@
-<script>
-const byId = id => document.getElementById(id);
-const api = async (p)=>{
-  try{
-    const r = await fetch(p, {cache:'no-store'});
-    if(!r.ok) throw new Error(await r.text());
-    return await r.json();
-  }catch(e){
-    throw e;
-  }
-};
-
-let LATEST=null, FREQ=[], RECENT10=[], ALL=[], TIERS=null;
-
-function setStatus(txt){ byId('dataStatus').textContent = txt; }
-
-function renderTable(el, rows, headers){
-  if(!rows || !rows.length){ el.innerHTML = '<div class="small muted">데이터 없음</div>'; return; }
-  el.innerHTML = '<table><thead><tr>'+headers.map(h=>`<th>${h}</th>`).join('')+'</tr></thead><tbody>' +
-    rows.map(r=>'<tr>'+headers.map(h=>`<td>${(r[h]??'')}</td>`).join('')+'</tr>').join('')+'</tbody></table>';
-}
-
-const markClass = (m)=> m==='top1'?'top1' : m==='top2'?'top2' : m==='low'?'low' : '';
-function ballsHtml(nums, markMap=null){
-  const cls = n => n<=10?'b-1': n<=20?'b-2': n<=30?'b-3': n<=40?'b-4':'b-5';
-  return `<div class="balls">` + nums.map(n=>{
-    const m = markMap? markMap.get(n): null;
-    const mCls = m? ' '+markClass(m): '';
-    const mLbl = m==='top1'?'T1': m==='top2'?'T2': m==='low'?'L': '';
-    const attr = mLbl? ` data-mark="${mLbl}"`: '';
-    return `<span class="ball ${cls(n)}${mCls}"${attr}>${n}</span>`;
-  }).join('') + `</div>`;
-}
-function buildMarkMap(freq){
-  const counts = []; for(let n=1;n<=45;n++) counts.push(freq[n]||0);
-  const uniq = Array.from(new Set(counts)).sort((a,b)=>b-a);
-  const top1Val = uniq[0], top2Val = uniq.length>=2? uniq[1]: null, lowVal = uniq[uniq.length-1];
-  const map = new Map();
-  for(let n=1;n<=45;n++){
-    const v = freq[n]||0;
-    if (v===top1Val) map.set(n,'top1');
-    else if (top2Val!==null && v===top2Val) map.set(n,'top2');
-    else if (v===lowVal) map.set(n,'low');
-  }
-  return map;
-}
-
-function renderRecent(){
-  const markMap = buildMarkMap(FREQ);
-  const rows = RECENT10.map(r=>({
-    '회차': r.round, '추첨일': r.date, '당첨번호': ballsHtml(r.nums, markMap),
-    '합계': r.sum, '홀수': r.odd, '짝수': r.even, '고번호(23+)': r.high
-  }));
-  const headers = ['회차','추첨일','당첨번호','합계','홀수','짝수','고번호(23+)'];
-  renderTable(byId('recentTable'), rows, headers);
-}
-
-function renderGroupFreq(){
-  const wrap = byId('groupFreqWrap'); wrap.innerHTML='';
-  const markMap = buildMarkMap(FREQ);
-  const groups=[{name:'1~10',from:1,to:10},{name:'11~20',from:11,to:20},{name:'21~30',from:21,to:30},{name:'31~40',from:31,to:40},{name:'41~45',from:41,to:45}];
-  groups.forEach(g=>{
-    const card = document.createElement('div'); card.className='card';
-    card.innerHTML = `<b>${g.name}</b><div id="g-${g.from}"></div>`;
-    wrap.appendChild(card);
-    let body='';
-    for(let n=g.from;n<=g.to;n++){
-      body += `<tr><td>${ballsHtml([n], markMap)}</td><td>${FREQ[n]||0}</td></tr>`;
-    }
-    card.querySelector('#g-'+g.from).innerHTML =
-      `<table><thead><tr><th>번호</th><th>빈도</th></tr></thead><tbody>${body}</tbody></table>`;
-  });
-}
-
-function recommendOnce(freq){
-  const max = Math.max(...freq);
-  const pool=[]; for(let n=1;n<=45;n++){ const w=(freq[n]/max)||0.01; const c=Math.max(1,Math.floor(w*100)); for(let i=0;i<c;i++) pool.push(n); }
-  const set=new Set(); while(set.size<6) set.add(pool[Math.floor(Math.random()*pool.length)]);
-  return Array.from(set).sort((a,b)=>a-b);
-}
-
-function renderRecs(){
-  const strategies=['conservative','balanced','high_risk'];
-  const labels={conservative:'보수형 (Conservative)', balanced:'균형형 (Balanced)', high_risk:'고위험형 (High-Risk)'};
-  const wrap = byId('recs'); wrap.innerHTML='';
-  const markMap = buildMarkMap(FREQ);
-  strategies.forEach(s=>{
-    const card = document.createElement('div'); card.className='card';
-    card.innerHTML = `<b>${labels[s]}</b>`;
-    const box = document.createElement('div'); box.style.marginTop='6px';
-    for(let i=0;i<5;i++){
-      const nums = recommendOnce(FREQ);
-      const row = document.createElement('div'); row.className='row'; row.style.marginTop='4px';
-      row.innerHTML = `<span class="small muted">#${i+1}</span> ${ballsHtml(nums, markMap)}`;
-      box.appendChild(row);
-    }
-    card.appendChild(box);
-    wrap.appendChild(card);
-  });
-}
-
-async function applyStats(n){
-  try{
-    setStatus('로딩 중…');
-    const j = await api('/api/stats?last='+n);
-    LATEST = j.latest; FREQ = j.freq; RECENT10 = j.recent10; TIERS = j.tiers;
-    byId('latest').textContent = LATEST || '-';
-    setStatus(j.count ? ('최근 '+j.count+'회') : '데모 데이터');
-    renderRecent();
-    renderGroupFreq();
-    renderRecs();
-  }catch(e){
-    // 완전 실패 → 사용자 안내 + 재시도 버튼 제공
-    setStatus('네트워크 지연/차단 — 데모 데이터 표시 중(2초 규칙)');
-    byId('recentTable').innerHTML = '<div class="small muted">데모 모드: 상단의 "조회" 또는 새로고침으로 재시도하세요.</div>';
-  }
-}
-
-async function init(){
-  await applyStats(50);
-  byId('freqPreset').addEventListener('change', (e)=>{ byId('freqN').value = e.target.value; });
-  byId('freqApply').addEventListener('click', async ()=>{ const n = parseInt(byId('freqN').value,10)||50; await applyStats(n); });
-  byId('loadAll').addEventListener('click', async ()=>{
-    setStatus('전체(로딩 중)');
-    try{
-      const latest = await api('/api/latest'); const end = latest.latest;
-      const all = await api('/api/all?start=1&end='+end);
-      ALL = all.rows; setStatus('전체(완료)');
-    }catch(e){ setStatus('전체(실패)'); }
-  });
-}
-init();
-</script>
+<!doctype html>
+<meta charset="utf-8">
+<title>로또 예측</title>
+<body style="background:#0f172a;color:#e5e7eb;font-family:system-ui;margin:0">
+  <div style="max-width:900px;margin:0 auto;padding:16px">
+    <h2>로또 예측(안정화)</h2>
+    <div id="status">데이터 로딩 중…</div>
+    <pre id="out" style="white-space:pre-wrap;background:#111827;padding:12px;border-radius:10px;margin-top:8px"></pre>
+  </div>
+  <script>
+    (async ()=>{
+      const s=document.getElementById('status'); const out=document.getElementById('out');
+      try{
+        const r=await fetch('/api/stats?last=20',{cache:'no-store'});
+        const j=await r.json();
+        s.textContent='OK'; out.textContent=JSON.stringify(j,null,2);
+      }catch(e){ s.textContent='데이터 에러(데모 표시 가능)'; out.textContent=String(e); }
+    })();
+  </script>
+</body>
