@@ -210,3 +210,44 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("server_render:app", host="0.0.0.0", port=port)
+
+# --- [추가/교체] server_render.py 하이라이트 (기존 내용 유지해도 됨) ---
+import sys, socket, json
+
+@app.get("/diag")
+async def diag():
+    """런타임·정적파일·네트워크 상태를 한 번에 표출."""
+    info = {}
+    try:
+        info["python"] = sys.version
+        info["cwd"] = str(APP_DIR)
+        info["static_dir_exists"] = STATIC_DIR.exists()
+        info["static_index_exists"] = (STATIC_DIR / "index.html").exists()
+        info["static_dir_list"] = sorted([p.name for p in STATIC_DIR.glob("*")])[:50]
+        info["env"] = {k: v for k, v in os.environ.items() if k in ("PORT","RENDER","PYTHONPATH")}
+        info["dns_dhlottery"] = socket.gethostbyname_ex("www.dhlottery.co.kr")[2]
+        info["gunicorn_pid"] = os.getpid()
+    except Exception as e:
+        info["diag_error"] = str(e)
+    return JSONResponse(info)
+
+@app.get("/api/probe")
+async def api_probe():
+    """외부 통신이 되는지 짧게 점검(타임아웃 1.5s). 실패해도 200 + 원인 문자열."""
+    result = {"ok": False, "detail": None}
+    try:
+        async with httpx.AsyncClient(http2=True) as client:
+            r = await client.get("https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo=1",
+                                 headers=HDRS, timeout=1.5)
+            result["status_code"] = r.status_code
+            result["ok"] = r.status_code == 200
+            # 200이어도 반환 JSON이 비정상인 경우가 있어 본문 일부 표시
+            try:
+                j = r.json()
+                result["returnValue"] = j.get("returnValue")
+                result["sample"] = {k: j.get(k) for k in ("drwNo","drwNoDate","drwtNo1","bnusNo")}
+            except Exception as je:
+                result["detail"] = f"json_error: {je}"
+    except Exception as e:
+        result["detail"] = f"request_error: {e}"
+    return JSONResponse(result)
