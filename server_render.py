@@ -1,4 +1,4 @@
-# server_render.py — robust fail-open stable build (fixed)
+# server_render.py — robust fail-open build
 import os, time, asyncio, random, logging
 from typing import Optional, List, Dict, Any
 from pathlib import Path
@@ -13,13 +13,12 @@ from fastapi.staticfiles import StaticFiles
 APP_DIR = Path(__file__).resolve().parent
 STATIC_DIR = APP_DIR / "static"
 
-# ---- 최소 인덱스 보장 (정적 누락으로 인한 크래시 방지)
 DEFAULT_HTML = """<!doctype html>
 <meta charset="utf-8">
-<title>서비스 준비 중</title>
+<title>로또 예측</title>
 <body style="font-family:sans-serif;background:#0f172a;color:#e5e7eb;margin:0;padding:24px">
   <h1>정적 파일 준비 중</h1>
-  <p>리포지토리에 <code>static/index.html</code>을 커밋하면 실제 UI가 표시됩니다.</p>
+  <p>리포지토리에 <code>static/index.html</code>을 커밋하면 UI가 표시됩니다.</p>
 </body>
 """
 
@@ -27,22 +26,18 @@ STATIC_DIR.mkdir(parents=True, exist_ok=True)
 if not (STATIC_DIR / "index.html").exists():
     (STATIC_DIR / "index.html").write_text(DEFAULT_HTML, encoding="utf-8")
 
-# ---- 앱 & 미들웨어
-app = FastAPI(title="Lotto Predictor", version="2.1.1")
+app = FastAPI(title="Lotto Predictor", version="2.1.2")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 app.add_middleware(GZipMiddleware, minimum_size=500)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-# ---- 외부 데이터
 HDRS = {"User-Agent": "Mozilla/5.0"}
 BASE_URL = "https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo="
 
-# ---- 캐시
 TTL_SEC = 1800
 _round_cache: Dict[int, Dict[str, Any]] = {}
 _round_ts: Dict[int, float] = {}
 _latest_cache: Dict[str, Any] = {"value": None, "ts": 0}
-_last_stats: Dict[str, Any] = {"ts": 0, "payload": None}
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("lotto")
@@ -85,7 +80,6 @@ async def fetch_range(start: int, end: int, batch_size: int = 25) -> List[Dict[s
     return results
 
 async def get_latest_round(lo: int = 1, hi: int = 1500) -> int:
-    # 10분 캐시
     now = time.time()
     if _latest_cache["value"] and (now - _latest_cache["ts"]) < 600:
         return _latest_cache["value"]
@@ -102,7 +96,6 @@ async def get_latest_round(lo: int = 1, hi: int = 1500) -> int:
         log.warning(f"get_latest_round fallback: {e}")
         return _latest_cache["value"] or 1200
 
-# ---- 파생 특성/빈도 계산
 def features(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     out = []
     for r in rows:
@@ -120,7 +113,7 @@ def frequency(rows: List[Dict[str, Any]]) -> List[int]:
             f[n]+=1
     return f
 
-def tier_marks(freq: List[int]) -> Dict[str, Any]:
+def tier_marks(freq: List[int]) -> Dict[str, Any]]:
     counts = [freq[n] for n in range(1,46)]
     if not counts or max(counts)==0:
         return {"top1": [], "top2": [], "low": [], "values": {"top1": None, "top2": None, "low": None}}
@@ -151,7 +144,6 @@ def fallback_demo() -> Dict[str, Any]:
         rows.append({"round": base_round-i, "date": f"2024-01-{(i%28)+1:02d}", "nums": nums, "bonus": rnd.randint(1,45)})
     return build_payload(rows)
 
-# ---- 엔드포인트
 @app.get("/health")
 def health():
     return {"ok": True}
@@ -162,7 +154,6 @@ async def api_latest():
         latest = await get_latest_round()
         return JSONResponse({"latest": latest}, headers={"Cache-Control": "public, max-age=300"})
     except Exception as e:
-        log.warning(f"/api/latest error: {e}")
         return JSONResponse({"latest": fallback_demo()["latest"]})
 
 @app.get("/api/all")
@@ -173,56 +164,37 @@ async def api_all(start: int = 1, end: Optional[int] = None):
         start = max(1, start)
         rows = await fetch_range(start, end)
         return JSONResponse({"rows": rows}, headers={"Cache-Control": "public, max-age=120"})
-    except Exception as e:
-        log.warning(f"/api/all error: {e}")
+    except Exception:
         return JSONResponse({"rows": []})
 
 @app.get("/api/stats")
 async def api_stats(last: int = Query(50, ge=5, le=2000), background_tasks: BackgroundTasks = None):
-    """
-    핵심: 외부 실패해도 항상 200과 유효 JSON을 반환(Fail-Open).
-    """
-    now = time.time()
     try:
         latest = await get_latest_round()
         start = max(1, latest - (last - 1))
-
         rows = []
         try:
-            # 2초 초과면 데모 반환 + 백그라운드 수집
             rows = await asyncio.wait_for(fetch_range(start, latest, batch_size=25), timeout=2.0)
         except asyncio.TimeoutError:
             rows = []
-
         if rows:
             payload = build_payload(rows)
         else:
             payload = fallback_demo()
             if background_tasks:
                 background_tasks.add_task(hydrate_background, latest or 1200)
-
-        # 캐시
-        global _last_stats
-        _last_stats.update({"ts": now, "payload": payload})
         return JSONResponse(payload, headers={"Cache-Control": "public, max-age=60"})
-
-    except Exception as e:
-        log.warning(f"/api/stats error (fail-open): {e}")
-        payload = fallback_demo()
-        return JSONResponse(payload, headers={"Cache-Control": "no-store"})
+    except Exception:
+        return JSONResponse(fallback_demo(), headers={"Cache-Control": "no-store"})
 
 async def hydrate_background(latest: int):
-    # 조용히 최신으로 교체
     try:
         start = max(1, latest - 199)
         rows = await fetch_range(start, latest, batch_size=25)
         if rows:
             payload = build_payload(rows)
-            global _last_stats
-            _last_stats.update({"ts": time.time(), "payload": payload})
-            log.info("background hydrate success")
-    except Exception as e:
-        log.warning(f"background hydrate failed: {e}")
+    except Exception:
+        pass
 
 @app.get("/")
 def root():
