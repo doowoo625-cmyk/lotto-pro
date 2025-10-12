@@ -1,8 +1,0 @@
-services:
-  - type: web
-    name: lotto-predictor
-    env: python
-    plan: free
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "python server_render.py"
-    autoDeploy: true
