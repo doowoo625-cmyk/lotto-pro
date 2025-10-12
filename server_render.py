@@ -1,5 +1,5 @@
 # server_render.py — robust fail-open build (stable)
-import os, time, asyncio, random, logging
+import os, time, asyncio, random, logging, socket, sys
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 
@@ -13,7 +13,6 @@ from fastapi.staticfiles import StaticFiles
 APP_DIR = Path(__file__).resolve().parent
 STATIC_DIR = APP_DIR / "static"
 
-# 정적 폴더/인덱스 자동 보장 (없어도 앱이 죽지 않게)
 DEFAULT_HTML = """<!doctype html>
 <meta charset="utf-8">
 <title>로또 예측</title>
@@ -27,7 +26,7 @@ STATIC_DIR.mkdir(parents=True, exist_ok=True)
 if not (STATIC_DIR / "index.html").exists():
     (STATIC_DIR / "index.html").write_text(DEFAULT_HTML, encoding="utf-8")
 
-app = FastAPI(title="Lotto Predictor", version="2.1.3")
+app = FastAPI(title="Lotto Predictor", version="2.2.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 app.add_middleware(GZipMiddleware, minimum_size=500)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -35,7 +34,6 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 HDRS = {"User-Agent": "Mozilla/5.0"}
 BASE_URL = "https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo="
 
-# 간단 캐시
 TTL_SEC = 1800
 _round_cache: Dict[int, Dict[str, Any]] = {}
 _round_ts: Dict[int, float] = {}
@@ -150,12 +148,43 @@ def fallback_demo() -> Dict[str, Any]:
 def health():
     return {"ok": True}
 
+@app.get("/diag")
+async def diag():
+    info = {}
+    try:
+        info["python"] = sys.version
+        info["cwd"] = str(APP_DIR)
+        info["static_dir_exists"] = STATIC_DIR.exists()
+        info["static_index_exists"] = (STATIC_DIR / "index.html").exists()
+        info["dns_dhlottery"] = socket.gethostbyname_ex("www.dhlottery.co.kr")[2]
+        info["env"] = {k: os.environ.get(k) for k in ("PORT",)}
+    except Exception as e:
+        info["error"] = str(e)
+    return JSONResponse(info)
+
+@app.get("/api/probe")
+async def api_probe():
+    result = {"ok": False, "detail": None}
+    try:
+        async with httpx.AsyncClient(http2=True) as client:
+            r = await client.get(f"{BASE_URL}1", headers=HDRS, timeout=1.5)
+            result["status_code"] = r.status_code
+            result["ok"] = r.status_code == 200
+            try:
+                j = r.json()
+                result["returnValue"] = j.get("returnValue")
+            except Exception as je:
+                result["detail"] = f"json_error: {je}"
+    except Exception as e:
+        result["detail"] = f"request_error: {e}"
+    return JSONResponse(result)
+
 @app.get("/api/latest")
 async def api_latest():
     try:
         latest = await get_latest_round()
         return JSONResponse({"latest": latest}, headers={"Cache-Control": "public, max-age=300"})
-    except Exception as e:
+    except Exception:
         return JSONResponse({"latest": fallback_demo()["latest"]})
 
 @app.get("/api/all")
@@ -171,15 +200,11 @@ async def api_all(start: int = 1, end: Optional[int] = None):
 
 @app.get("/api/stats")
 async def api_stats(last: int = Query(50, ge=5, le=2000), background_tasks: BackgroundTasks = None):
-    """
-    핵심: 외부 실패해도 항상 200 + 유효 JSON 반환(Fail-Open).
-    """
     try:
         latest = await get_latest_round()
         start = max(1, latest - (last - 1))
         rows = []
         try:
-            # 2초 넘으면 데모 반환 + 백그라운드 적재
             rows = await asyncio.wait_for(fetch_range(start, latest, batch_size=25), timeout=2.0)
         except asyncio.TimeoutError:
             rows = []
@@ -195,7 +220,7 @@ async def hydrate_background(latest: int):
         start = max(1, latest - 199)
         rows = await fetch_range(start, latest, batch_size=25)
         if rows:
-            _ = build_payload(rows)  # 필요시 서버 전역 캐시에 올릴 수 있음
+            _ = build_payload(rows)
     except Exception:
         pass
 
@@ -210,44 +235,3 @@ if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("server_render:app", host="0.0.0.0", port=port)
-
-# --- [추가/교체] server_render.py 하이라이트 (기존 내용 유지해도 됨) ---
-import sys, socket, json
-
-@app.get("/diag")
-async def diag():
-    """런타임·정적파일·네트워크 상태를 한 번에 표출."""
-    info = {}
-    try:
-        info["python"] = sys.version
-        info["cwd"] = str(APP_DIR)
-        info["static_dir_exists"] = STATIC_DIR.exists()
-        info["static_index_exists"] = (STATIC_DIR / "index.html").exists()
-        info["static_dir_list"] = sorted([p.name for p in STATIC_DIR.glob("*")])[:50]
-        info["env"] = {k: v for k, v in os.environ.items() if k in ("PORT","RENDER","PYTHONPATH")}
-        info["dns_dhlottery"] = socket.gethostbyname_ex("www.dhlottery.co.kr")[2]
-        info["gunicorn_pid"] = os.getpid()
-    except Exception as e:
-        info["diag_error"] = str(e)
-    return JSONResponse(info)
-
-@app.get("/api/probe")
-async def api_probe():
-    """외부 통신이 되는지 짧게 점검(타임아웃 1.5s). 실패해도 200 + 원인 문자열."""
-    result = {"ok": False, "detail": None}
-    try:
-        async with httpx.AsyncClient(http2=True) as client:
-            r = await client.get("https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo=1",
-                                 headers=HDRS, timeout=1.5)
-            result["status_code"] = r.status_code
-            result["ok"] = r.status_code == 200
-            # 200이어도 반환 JSON이 비정상인 경우가 있어 본문 일부 표시
-            try:
-                j = r.json()
-                result["returnValue"] = j.get("returnValue")
-                result["sample"] = {k: j.get(k) for k in ("drwNo","drwNoDate","drwtNo1","bnusNo")}
-            except Exception as je:
-                result["detail"] = f"json_error: {je}"
-    except Exception as e:
-        result["detail"] = f"request_error: {e}"
-    return JSONResponse(result)
