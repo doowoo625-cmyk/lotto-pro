@@ -1,0 +1,91 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>로또 예측 — 최종 안정판</title>
+<style>
+  body{margin:0;background:#0f172a;color:#e5e7eb;font-family:system-ui}
+  .wrap{max-width:980px;margin:0 auto;padding:16px}
+  .card{background:#111827;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px;margin-top:12px}
+  .ok{color:#34d399}.warn{color:#fbbf24}.err{color:#f87171}.muted{color:#9ca3af}
+  pre{white-space:pre-wrap;background:#0b1220;border-radius:10px;padding:12px;overflow:auto}
+  button{background:#60a5fa;border:0;border-radius:8px;padding:8px 12px;font-weight:700;color:#0b1220;cursor:pointer}
+  .balls{display:inline-flex;gap:6px;vertical-align:middle}
+  .ball{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;border:1px solid rgba(0,0,0,.25);color:#111;font-weight:800}
+  .b-1{background:#facc15}.b-2{background:#60a5fa}.b-3{background:#ef4444}.b-4{background:#a78bfa}.b-5{background:#34d399}
+</style>
+<div class="wrap">
+  <h2>로또 예측 — 최종 안정판</h2>
+
+  <div class="card">
+    <b>상태</b> <span id="status" class="muted">초기화 중…</span>
+    <div style="margin-top:8px">
+      <button id="retry">재시도</button>
+      <a href="/diag" target="_blank"><button>diag</button></a>
+      <a href="/api/probe" target="_blank"><button>probe</button></a>
+      <a href="/api/stats?last=20" target="_blank"><button>stats</button></a>
+    </div>
+  </div>
+
+  <div class="card">
+    <b>예측 번호 뽑기</b>
+    <div id="picks" style="margin-top:8px"></div>
+    <button id="btnPick" style="margin-top:10px">새로 뽑기</button>
+  </div>
+
+  <div class="card">
+    <b>최근 10회</b>
+    <div id="recent"></div>
+  </div>
+
+  <div class="card">
+    <b>번호별 빈도</b>
+    <div id="freq"></div>
+  </div>
+</div>
+<script>
+const cls=n=>n<=10?'b-1':n<=20?'b-2':n<=30?'b-3':n<=40?'b-4':'b-5';
+const ball=n=>`<span class="ball ${cls(n)}">${n}</span>`;
+const balls=a=>`<span class="balls">`+a.map(ball).join('')+`</span>`;
+const byId=id=>document.getElementById(id);
+const api=async p=>{const r=await fetch(p,{cache:'no-store'});const t=await r.text();try{return JSON.parse(t)}catch(e){throw new Error(t||e)}};
+
+let FREQ=[], RECENT10=[], LATEST=0;
+
+function weightedPick(freq){
+  const max=Math.max(...freq);
+  const pool=[]; for(let n=1;n<=45;n++){const w=(freq[n]/(max||1)); const c=Math.max(1,Math.floor(w*100)); for(let i=0;i<c;i++) pool.push(n);}
+  const s=new Set(); while(s.size<6) s.add(pool[Math.floor(Math.random()*pool.length)]);
+  return Array.from(s).sort((a,b)=>a-b);
+}
+
+function renderPicks(){
+  const el=byId('picks'); el.innerHTML='';
+  for(let i=0;i<5;i++){ el.innerHTML += `<div style="margin:4px 0">${balls(weightedPick(FREQ))}</div>`; }
+}
+
+function renderRecent(){
+  const el=byId('recent'); if(!RECENT10.length){el.textContent='데이터 없음';return;}
+  el.innerHTML = RECENT10.map(r=>`${r.round}회 (${r.date}) — ${balls(r.nums)}`).join('<br>');
+}
+
+function renderFreq(){
+  const el=byId('freq'); let html='<table><thead><tr><th>번호</th><th>빈도</th></tr></thead><tbody>';
+  for(let n=1;n<=45;n++){ html+=`<tr><td>${ball(n)}</td><td>${FREQ[n]||0}</td></tr>`; }
+  html+='</tbody></table>'; el.innerHTML=html;
+}
+
+async function loadStats(n=50){
+  byId('status').textContent='로딩 중…';
+  try{
+    const j = await api('/api/stats?last='+n);
+    FREQ=j.freq; RECENT10=j.recent10; LATEST=j.latest;
+    byId('status').textContent = j.count ? `OK: 최근 ${j.count}회 (최신 ${LATEST}회)` : '데모 데이터';
+    renderPicks(); renderRecent(); renderFreq();
+  }catch(e){
+    byId('status').textContent='오류: '+e.message;
+  }
+}
+
+byId('retry').onclick=()=>loadStats(50);
+byId('btnPick').onclick=renderPicks;
+loadStats(50);
+</script>
