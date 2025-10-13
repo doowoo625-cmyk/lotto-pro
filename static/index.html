@@ -1,22 +1,53 @@
 <!doctype html>
 <meta charset="utf-8">
-<title>로또 예측 — 진단/안정화</title>
-<body style="background:#0f172a;color:#e5e7eb;font-family:system-ui;margin:0">
-  <div style="max-width:900px;margin:0 auto;padding:16px">
-    <h2>로또 예측(안정화)</h2>
-    <div id="status">체크 중…</div>
-    <pre id="log" style="white-space:pre-wrap;background:#111827;padding:12px;border-radius:10px;margin-top:8px"></pre>
+<title>로또 예측 — Rescue</title>
+<style>
+  body{margin:0;background:#0f172a;color:#e5e7eb;font-family:system-ui}
+  .wrap{max-width:960px;margin:0 auto;padding:16px}
+  .card{background:#111827;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px;margin-top:12px}
+  .ok{color:#34d399}.warn{color:#fbbf24}.err{color:#f87171}.muted{color:#9ca3af}
+  pre{white-space:pre-wrap;background:#0b1220;border-radius:10px;padding:12px;overflow:auto}
+  button{background:#60a5fa;border:0;border-radius:8px;padding:8px 12px;font-weight:700;color:#0b1220;cursor:pointer}
+</style>
+<div class="wrap">
+  <h2>로또 예측 — Rescue 모드</h2>
+  <div class="card"><b>상태</b> <span id="status" class="muted">초기화 중…</span>
+    <div style="margin-top:8px">
+      <button id="retry">재시도</button>
+      <a href="/diag" target="_blank"><button>diag 열기</button></a>
+      <a href="/api/probe" target="_blank"><button>probe 열기</button></a>
+      <a href="/api/stats?last=20" target="_blank"><button>stats 열기</button></a>
+    </div>
   </div>
-  <script>
-    const s = (t)=>document.getElementById('status').textContent=t;
-    const l = (m)=>document.getElementById('log').textContent+=m+"\\n";
-    async function j(url){const r=await fetch(url,{cache:'no-store'});const t=await r.text();try{return{ok:r.ok,status:r.status,json:JSON.parse(t)}}catch{return{ok:r.ok,status:r.status,text:t}}}
-    (async ()=>{
-      s('health…'); let r=await j('/health'); l(`/health -> ${r.status} ${r.ok}`); if(!r.ok) return s('서버 기동 실패');
-      s('diag…');   r=await j('/diag');   l(`/diag -> ${r.status} ${r.ok}\\n`+JSON.stringify(r.json||r.text,null,2));
-      s('probe…');  r=await j('/api/probe'); l(`/api/probe -> ${r.status} ${r.ok}\\n`+JSON.stringify(r.json||r.text,null,2));
-      s('stats…');  r=await j('/api/stats?last=20'); l(`/api/stats -> ${r.status} ${r.ok}`); if(!r.ok) return s('통계 API 실패');
-      s((r.json&&r.json.count)?`OK: 최근 ${r.json.count}회`:'데모 데이터');
-    })();
-  </script>
-</body>
+  <div class="card"><b>진단 로그</b>
+    <pre id="log"></pre>
+  </div>
+  <div class="card"><b>최근 10회 (데모/실제)</b>
+    <pre id="out"></pre>
+  </div>
+</div>
+<script>
+const S = (t,c)=>{ const el=document.getElementById('status'); el.textContent=t; el.className=c||''; }
+const L = (m)=>{ const el=document.getElementById('log'); el.textContent += m + "\n"; }
+async function jget(url) {
+  const r = await fetch(url, {cache:'no-store'}); const txt = await r.text();
+  try { return {ok:r.ok, status:r.status, json: JSON.parse(txt)}; } catch { return {ok:r.ok, status:r.status, text:txt}; }
+}
+async function run() {
+  document.getElementById('log').textContent='';
+  S('헬스 체크…','muted');
+  let r = await jget('/health'); L(`GET /health -> ${r.status} ${r.ok}`); if(!r.ok){ S('서버 기동 실패(health)','err'); return; }
+  S('환경 진단(diag)…','muted');
+  r = await jget('/diag'); L(`GET /diag -> ${r.status} ${r.ok}\n` + JSON.stringify(r.json||r.text,null,2)); if(!r.ok){ S('diag 실패','err'); return; }
+  S('외부 통신 점검(probe)…','muted');
+  r = await jget('/api/probe'); L(`GET /api/probe -> ${r.status} ${r.ok}\n` + JSON.stringify(r.json||r.text,null,2));
+  S('통계 로딩(stats)…','muted');
+  r = await jget('/api/stats?last=20'); L(`GET /api/stats?last=20 -> ${r.status} ${r.ok}`);
+  if(!r.ok){ S('통계 API 실패 — Fail-Open 확인 필요','err'); return; }
+  const j = r.json || {};
+  S(j.count ? `OK: 최근 ${j.count}회 데이터` : '데모 데이터', 'ok');
+  document.getElementById('out').textContent = JSON.stringify({latest:j.latest, count:j.count, recent10:j.recent10?.slice(0,3)}, null, 2);
+}
+document.getElementById('retry').onclick = run;
+run();
+</script>
