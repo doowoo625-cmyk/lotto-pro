@@ -1,4 +1,4 @@
-# server_render.py — Final stable build for Render (fail-open + diag + probe)
+# server_render.py — Stable backend (fail-open + diag + probe)
 import os, time, asyncio, random, logging, socket, sys
 from typing import Optional, List, Dict, Any
 from pathlib import Path
@@ -26,7 +26,7 @@ STATIC_DIR.mkdir(parents=True, exist_ok=True)
 if not (STATIC_DIR / "index.html").exists():
     (STATIC_DIR / "index.html").write_text(DEFAULT_HTML, encoding="utf-8")
 
-app = FastAPI(title="Lotto Predictor", version="3.0.0")
+app = FastAPI(title="Lotto Predictor", version="3.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 app.add_middleware(GZipMiddleware, minimum_size=500)
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -52,7 +52,7 @@ def _set_cache(n: int, payload: Dict[str, Any]):
     _round_cache[n] = payload
     _round_ts[n] = time.time()
 
-async def fetch_round_async(client: httpx.AsyncClient, n: int, timeout: float = 1.5) -> Optional[Dict[str, Any]]:
+async def fetch_round_async(client: httpx.AsyncClient, n: int, timeout: float = 1.8) -> Optional[Dict[str, Any]]:
     cached = _get_cache(n)
     if cached is not None:
         return cached
@@ -103,7 +103,7 @@ def features(rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         s = sum(nums)
         odd = sum(1 for n in nums if n % 2 == 1)
         high = sum(1 for n in nums if n > 23)
-        out.append({**r, "sum": s, "odd": odd, "even": 6 - odd, "high": high, "low": 6 - high})
+        out.append({**r, "sum": s, "odd": odd, "even": 6 - odd, "high": high, "low": 6 - high, "round": r["round"], "date": r["date"]})
     return out
 
 def frequency(rows: List[Dict[str, Any]]) -> List[int]:
@@ -113,27 +113,11 @@ def frequency(rows: List[Dict[str, Any]]) -> List[int]:
             f[n]+=1
     return f
 
-def tier_marks(freq: List[int]) -> Dict[str, Any]:
-    counts = [freq[n] for n in range(1,46)]
-    if not counts or max(counts) == 0:
-        return {"top1": [], "top2": [], "low": [], "values": {"top1": None, "top2": None, "low": None}}
-    uniq = sorted(set(counts), reverse=True)
-    top1 = uniq[0]
-    top2 = uniq[1] if len(uniq) >= 2 else None
-    low  = uniq[-1]
-    return {
-        "top1": [n for n in range(1,46) if freq[n]==top1],
-        "top2": [n for n in range(1,46) if (top2 is not None and freq[n]==top2)],
-        "low":  [n for n in range(1,46) if freq[n]==low],
-        "values": {"top1": top1, "top2": top2, "low": low}
-    }
-
 def build_payload(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     feats = features(rows)
     freq = frequency(feats)
-    tiers = tier_marks(freq)
     latest = max((r["round"] for r in rows), default=0)
-    return {"latest": latest, "count": len(rows), "freq": freq, "tiers": tiers, "recent10": feats[-10:][::-1]}
+    return {"latest": latest, "count": len(rows), "freq": freq, "recent10": feats[-10:][::-1]}
 
 def fallback_demo() -> Dict[str, Any]:
     rnd = random.Random(42)
@@ -183,30 +167,19 @@ async def api_probe():
     return JSONResponse(result)
 
 @app.get("/api/stats")
-async def api_stats(last: int = Query(50, ge=5, le=2000), background_tasks: BackgroundTasks = None):
+async def api_stats(last: int = Query(50, ge=5, le=2000)):
     try:
         latest = await get_latest_round()
         start = max(1, latest - (last - 1))
         rows: List[Dict[str, Any]] = []
         try:
-            rows = await asyncio.wait_for(fetch_range(start, latest, batch_size=25), timeout=1.8)
+            rows = await asyncio.wait_for(fetch_range(start, latest, batch_size=25), timeout=2.0)
         except asyncio.TimeoutError:
             rows = []
         payload = build_payload(rows) if rows else fallback_demo()
-        if background_tasks and not rows:
-            background_tasks.add_task(hydrate_background, latest or 1200)
         return JSONResponse(payload, headers={"Cache-Control": "public, max-age=60"})
     except Exception:
         return JSONResponse(fallback_demo(), headers={"Cache-Control": "no-store"})
-
-async def hydrate_background(latest: int):
-    try:
-        start = max(1, latest - 199)
-        rows = await fetch_range(start, latest, batch_size=25)
-        if rows:
-            _ = build_payload(rows)
-    except Exception:
-        pass
 
 @app.get("/")
 def root():
