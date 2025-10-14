@@ -4,8 +4,8 @@ services:
     env: python
     plan: free
     buildCommand: pip install --upgrade pip && pip install -r requirements.txt
-    startCommand: python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    startCommand: gunicorn -k uvicorn.workers.UvicornWorker -w 2 -t 120 -b 0.0.0.0:$PORT server_render:app
     autoDeploy: true
     envVars:
       - key: PYTHON_VERSION
-        value: 3.11.9
+        value: 3.13.4

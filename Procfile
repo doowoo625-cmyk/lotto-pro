@@ -1,1 +1,1 @@
-web: python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
+web: gunicorn -k uvicorn.workers.UvicornWorker -w 2 -t 120 -b 0.0.0.0:$PORT server_render:app
