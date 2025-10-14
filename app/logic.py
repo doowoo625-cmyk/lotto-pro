@@ -1,7 +1,7 @@
 
 from __future__ import annotations
 import random
-from typing import List, Dict, Tuple
+from typing import List, Dict
 from collections import Counter
 from .storage import read_last_draw, read_recent10
 
@@ -78,7 +78,7 @@ def _metrics(nums: List[int], freq: Dict[int,int]):
     details = " | ".join([f"{n:02d}/{f}/{p}%/{basis}" for n,f,p in zip(nums, fvals, perc)])
     win = min(95.0, max(5.0, score*100.0/(reward+1.0)))
     return dict(reward=round(reward,3), risk=round(risk,3), score=round(score,3),
-                rr=round(rr,3), win=round(win,1), details=details)
+                rr=round(rr,3), win=round(win,1), rationale=details)
 
 def generate_predictions(seed: int | None, count: int = 5):
     last = read_last_draw()
@@ -88,10 +88,11 @@ def generate_predictions(seed: int | None, count: int = 5):
 
     rng = random.Random(seed)
     strategies = ["Conservative","Balanced","High-Risk"]
-    result = {}
-    best = []
+    all_by_strategy: Dict[str, List[Dict]] = {}
+    best_per_strategy: List[Dict] = []
     global_max_score = 1e-9
-    tmp_all = {}
+
+    # score 계산 및 전역 최대값 파악
     for s in strategies:
         cands = _gen_candidates(s, count, rng, weights)
         scored = []
@@ -99,18 +100,15 @@ def generate_predictions(seed: int | None, count: int = 5):
             m = _metrics(nums, recent_cnt)
             global_max_score = max(global_max_score, m["score"])
             scored.append({"name": s, "numbers": nums, **m})
-        tmp_all[s] = scored
-
-    for s, scored in tmp_all.items():
-        for it in scored:
-            it["win"] = round(min(95.0, max(5.0, it["score"]/global_max_score*88.0+5.0)), 1)
         scored.sort(key=lambda x: x["score"], reverse=True)
-        result[s] = scored
-        best.append(scored[0])
-    best.sort(key=lambda x: x["score"], reverse=True)
+        all_by_strategy[s] = scored
+        best_per_strategy.append(scored[0])
+
+    # best 3를 score 내림차순(우선순위 1,2,3)으로 정렬
+    best_per_strategy.sort(key=lambda x: x["score"], reverse=True)
 
     per = _per_number_range_freq(recent_cnt)
-    strengths, top2, bottom = _range_strengths(per)
+    _, top2, bottom = _range_strengths(per)
 
     basis = None
     recent_last = None
@@ -118,4 +116,4 @@ def generate_predictions(seed: int | None, count: int = 5):
         basis = {"draw_no": recent[0]["draw_no"], "numbers": recent[0]["numbers"], "bonus": recent[0]["bonus"]}
         recent_last = {"draw_no": recent[-1]["draw_no"], "numbers": recent[-1]["numbers"], "bonus": recent[-1]["bonus"]}
 
-    return last, basis, recent_last, best, result, per, top2, bottom
+    return last, basis, recent_last, best_per_strategy, all_by_strategy, per, top2, bottom
