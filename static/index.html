@@ -11,7 +11,7 @@
   <div class="container">
     <header>
       <h1>로또 예측 시스템 <span class="badge">v3.1-final</span></h1>
-      <div id="status" class="status-card">
+      <div class="status-card">
         <div>상태: <span id="apiStatus">확인 중…</span></div>
         <div class="last">
           직전 회차(<span id="drawNo">-</span>) 숫자: <span id="lastNums">-</span> 보너스: <span id="bonusNum">-</span>
@@ -21,12 +21,12 @@
 
     <section class="controls">
       <div class="group">
-        <label>Seed(선택): <input id="seed" type="number" placeholder="예: 20251014" /></label>
-        <label>Count(전략별 후보 수): <input id="count" type="number" min="1" max="50" value="5" /></label>
+        <label>Seed: <input id="seed" type="number" placeholder="예: 20251014" /></label>
+        <label>Count: <input id="count" type="number" min="1" max="50" value="5" /></label>
         <button id="btnPredict">예측 번호 뽑기</button>
       </div>
       <details>
-        <summary>직전 회차 결과 수동 입력/수정</summary>
+        <summary>직전 회차 입력/수정</summary>
         <div class="group">
           <label>회차: <input id="inpDrawNo" type="number" min="0" /></label>
           <label>번호 6개: <input id="inpNumbers" type="text" placeholder="예: 3,7,12,18,29,41" /></label>
@@ -47,7 +47,6 @@
       <div id="allCandidates"></div>
     </section>
   </div>
-
   <script src="/static/app.js"></script>
 </body>
 </html>
