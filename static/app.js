@@ -31,145 +31,142 @@ async function refreshTop(){
   }catch(e){}
 }
 
-function renderBestStrategy(best_name_ko, top5){
-  const root = document.getElementById("bestStrategyBlock");
-  root.innerHTML = "";
-  const card = document.createElement("div");
-  card.className = "card";
-  let html = `<h3>가장 추천하는 전략: <b>${best_name_ko}</b></h3>`;
-  html += `<div class="table"><div class="thead"># / 조합 / Score · R/R · 추정승률</div>`;
-  top5.forEach((it, idx)=>{
-    html += `<div class="row" style="display:flex;align-items:center;gap:12px;margin:6px 0;">
-      <div style="width:28px;">${idx+1}위</div>
-      <div class="pills" style="flex:1 1 auto">${it.numbers.map(pill).join("")}</div>
-      <div class="right kv" style="min-width:260px">
-        <span class="tag">Score ${it.score}</span>
-        <span class="tag">R/R ${it.rr}</span>
-        <span class="tag">승률 ${it.win}%</span>
-      </div>
-    </div>
-    <div class="small" style="margin-left:40px;opacity:.9">근거: <b>번호 / 빈도 / 확률(%) / 기준</b> — ${it.rationale}</div>`;
+function renderBestTable(best_name_ko, rows){
+  const root = document.getElementById("tblBest");
+  const ths = ['No.','예측 번호 조합','전략'];
+  for(let i=1;i<=6;i++){ ths.push('번호','빈도','확률','기준'); }
+  let html = '<table class="table"><thead><tr>' + ths.map(t=>`<th>${t}</th>`).join('') + '</tr></thead><tbody>';
+  rows.forEach((it, idx)=>{
+    let tds = [`<td>${idx+1}</td>`,`<td>${it.numbers.map(pill).join(' ')}</td>`,`<td>${best_name_ko}</td>`];
+    const parts = (it.rationale||'').split('|').map(s=>s.trim());
+    parts.forEach(seg=>{
+      const [num, freq, pct, basis] = seg.split('/');
+      tds.push(`<td>${num}</td>`,`<td class="right">${freq}</td>`,`<td class="right">${pct}</td>`,`<td>${basis}</td>`);
+    });
+    for(let k=parts.length;k<6;k++){ tds.push('<td></td><td></td><td></td><td></td>'); }
+    html += '<tr>'+tds.join('')+'</tr>';
   });
-  html += `</div>`;
-  card.innerHTML = html;
-  root.appendChild(card);
+  html += '</tbody></table>';
+  root.innerHTML = html;
 }
 
 function renderWeekly(best3){
-  const root = document.getElementById("weeklyTop3");
-  root.innerHTML = "";
-  best3.forEach((it, i)=>{
-    const c = document.createElement("div");
-    c.className = "card";
-    c.innerHTML = `
-      <h3>${i+1}번 ${it.name_ko}</h3>
-      <div class="pills">${it.numbers.map(pill).join("")}</div>
-      <div class="kv">
-        <span class="tag">Score ${it.score}</span>
-        <span class="tag">R/R ${it.rr}</span>
-        <span class="tag">승률 ${it.win}%</span>
-      </div>
-      <div class="small">근거: <b>번호 / 빈도 / 확률(%) / 기준</b> — ${it.rationale}</div>`;
-    root.appendChild(c);
+  const order = ['균형형','보수형','고위험형'];
+  const map = {}; best3.forEach(r=> map[r.name_ko]=r);
+  let html = '';
+  order.forEach((name, idx)=>{
+    const it = map[name];
+    html += '<table class="table" style="margin:8px 0">';
+    html += `<thead><tr><th>① ${name}</th><th colspan="10" class="subth right">근거</th></tr></thead><tbody>`;
+    if (it){
+      html += `<tr><td>${it.numbers.map(pill).join(' ')}</td><td colspan="10" class="small">${it.rationale}</td></tr>`;
+    }else{
+      html += `<tr><td colspan="11">데이터 없음</td></tr>`;
+    }
+    html += '</tbody></table>';
   });
+  document.getElementById('tblWeekly').innerHTML = html;
 }
 
 function renderByStrategy(all){
-  const root = document.getElementById("byStrategy");
-  root.innerHTML = "";
-  const order = ["보수형","균형형","고위험형"];
-  order.forEach(name=>{
-    const group = document.createElement("div");
-    group.className = "card";
-    group.innerHTML = `<h3>${order.indexOf(name)+1}. ${name}</h3>`;
-    const grid = document.createElement("div");
-    grid.className = "cards";
-    (all[name]||[]).slice(0,5).forEach((it, idx)=>{
-      const inner = document.createElement("div");
-      inner.className = "card";
-      inner.innerHTML = `
-        <h3>#${idx+1}</h3>
-        <div class="pills">${it.numbers.map(pill).join("")}</div>
-        <div class="kv">
-          <span class="tag">Score ${it.score}</span>
-          <span class="tag">R/R ${it.rr}</span>
-          <span class="tag">승률 ${it.win}%</span>
-        </div>
-        <div class="small">근거: <b>번호 / 빈도 / 확률(%) / 기준</b> — ${it.rationale}</div>`;
-      grid.appendChild(inner);
-    });
-    group.appendChild(grid);
-    root.appendChild(group);
+  const order = ['보수형','균형형','고위험형'];
+  let html='';
+  order.forEach((name, gi)=>{
+    html += '<table class="table" style="margin:10px 0">';
+    html += `<thead><tr><th>② ${gi+1}. ${name}</th><th class="right">Score</th><th class="right">보상</th><th class="right">승률</th></tr></thead><tbody>`;
+    const rows = (all[name]||[]).slice(0,5);
+    if (rows.length===0){ html += `<tr><td colspan="4">데이터 없음</td></tr>`; }
+    else{
+      rows.forEach((it, idx)=>{
+        html += `<tr>
+          <td>${idx+1}. ${it.numbers.map(pill).join(' ')}</td>
+          <td class="right">${it.score}</td>
+          <td class="right">${it.reward}</td>
+          <td class="right">${it.win}%</td>
+        </tr>`;
+      });
+    }
+    html += '</tbody></table>';
   });
+  document.getElementById('tblByStrategy').innerHTML = html;
 }
 
 async function refreshRecent(){
-  const data = await getJSON("/api/recent");
-  const items = (data.items||[]).slice(-10);
-  items.sort((a,b)=> a.draw_no - b.draw_no);
-  const sel = document.getElementById("selDraw");
-  sel.innerHTML = `<option value="all">전체(최근 10회)</option>` + items.map(it=>`<option value="${it.draw_no}">${it.draw_no}회</option>`).join("");
-  const board = document.getElementById("recentBoard");
-  function render(filter){
-    board.innerHTML = "";
-    const list = filter==="all" ? items : items.filter(x=> String(x.draw_no)===filter);
+  const data = await getJSON('/api/recent');
+  const items = (data.items||[]).slice(-10).sort((a,b)=> a.draw_no - b.draw_no);
+  const sel = document.getElementById('selDraw');
+  sel.innerHTML = '<option value="all">최근 10회</option>' + items.map(it=>`<option value="${it.draw_no}">${it.draw_no}회</option>`).join('');
+  const render = (filter)=>{
+    const list = filter==='all' ? items : items.filter(x=> String(x.draw_no)===filter);
+    let html = '<table class="table"><thead><tr><th>회차</th><th>날짜</th>' + 
+      '<th colspan="6">번호</th><th class="right">합</th><th class="right">홀</th><th class="right">고번호</th></tr></thead><tbody>';
     list.forEach(it=>{
-      const c = document.createElement("div");
-      c.className = "card";
-      c.innerHTML = `<b>${it.draw_no}회</b> — ${it.numbers.map(pill).join(" ")} | 보너스 ${pill(it.bonus)}`;
-      board.appendChild(c);
+      const sum = it.numbers.reduce((a,b)=>a+b,0);
+      const odd = it.numbers.filter(n=> n%2===1).length;
+      const high = it.numbers.filter(n=> n>=23).length;
+      const date = it.date || '';
+      html += `<tr><td>${it.draw_no}</td><td>${date}</td><td colspan="6">${it.numbers.map(pill).join(' ')}</td><td class="right">${sum}</td><td class="right">${odd}</td><td class="right">${high}</td></tr>`;
     });
-  }
-  sel.onchange = (e)=> render(e.target.value);
-  render("all");
+    html += '</tbody></table>';
+    document.getElementById('tblRecent').innerHTML = html;
+  };
+  document.getElementById('btnRecent').onclick = ()=> render(sel.value);
+  render('all');
 }
 
 async function refreshRange(){
-  const winSel = document.getElementById("selWindow");
-  const windowN = parseInt(winSel.value||"10",10);
+  const windowN = parseInt(document.getElementById('selWindow').value||'10',10);
   const data = await getJSON(`/api/range_freq?window=${windowN}`);
-  const per = data.per, top2 = data.top2, bottom = data.bottom;
-  const root = document.getElementById("rangeBoard");
-  root.innerHTML = "";
-  const order = ["1-10","11-20","21-30","31-40","41-45"];
-  order.forEach(label=>{
-    const card = document.createElement("div");
-    card.className = "range";
-    if (top2.includes(label)) card.classList.add("top");
-    if (bottom===label) card.classList.add("bottom");
-    card.innerHTML = `<h4>${label}</h4><div class="grid10"></div>`;
-    const grid = card.querySelector(".grid10");
-    Object.entries(per[label]).forEach(([n, f])=>{
-      const row = document.createElement("div");
-      row.style.display = "flex"; row.style.alignItems = "center"; row.style.justifyContent = "space-between";
-      row.innerHTML = `<div>${pill(parseInt(n,10))}</div><div class="small" style="font-weight:800">빈도 ${f}</div>`;
-      grid.appendChild(row);
+  const per = data.per;
+  const groups = ['1-10','11-20','21-30','31-40','41-45'];
+  let html = '<table class="table"><thead><tr>';
+  groups.forEach(g=> html += `<th colspan="2">${g}</th>`);
+  html += '</tr><tr class="subth">';
+  groups.forEach(g=> html += '<th>번호</th><th>빈도</th>');
+  html += '</tr></thead><tbody>';
+  const maxRows = 10;
+  for(let r=0;r<maxRows;r++){
+    html += '<tr>';
+    groups.forEach(g=>{
+      const keys = Object.keys(per[g]).sort((a,b)=> Number(a)-Number(b));
+      const n = keys[r]; const f = n ? per[g][n] : '';
+      html += `<td>${n? `<span class="pill ${lottoColor(Number(n))}">${String(n).padStart(2,'0')}</span>`:''}</td><td class="right">${f!==''? f:''}</td>`;
     });
-    root.appendChild(card);
+    html += '</tr>';
+  }
+  html += '<tr class="subth">';
+  groups.forEach(g=>{
+    const sum = Object.values(per[g]).reduce((a,b)=>a+Number(b),0);
+    html += `<td>합계</td><td class="right">${sum}</td>`;
   });
+  html += '</tr></tbody></table>';
+  document.getElementById('tblRange').innerHTML = html;
 }
-document.getElementById("selWindow").addEventListener("change", refreshRange);
 
 async function doPredict(){
-  const seedVal = document.getElementById("seed").value;
-  const countVal = parseInt(document.getElementById("count").value || "5", 10);
+  const seedVal = document.getElementById('seed').value;
+  const countVal = parseInt(document.getElementById('count').value || '5', 10);
   const body = { count: countVal };
-  if (seedVal !== "") body.seed = parseInt(seedVal, 10);
-  const res = await getJSON("/api/predict", {
-    method: "POST",
-    headers: {"Content-Type":"application/json"},
+  if (seedVal !== '') body.seed = parseInt(seedVal, 10);
+  const res = await getJSON('/api/predict', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
     body: JSON.stringify(body)
   });
-  renderBestStrategy(res.best_strategy_name_ko, res.best_strategy_top5);
+  renderBestTable(res.best_strategy_name_ko, res.best_strategy_top5);
   renderWeekly(res.best3_by_priority_korean);
   renderByStrategy(res.all_by_strategy_korean);
-  await refreshRange();
+}
+
+function bindEvents(){
+  document.getElementById('btnPredict').addEventListener('click', doPredict);
+  document.getElementById('btnRange').addEventListener('click', refreshRange);
 }
 
 async function init(){
+  bindEvents();
   await refreshTop();
   await refreshRecent();
   await refreshRange();
-  document.getElementById("btnPredict").addEventListener("click", doPredict);
 }
 init();

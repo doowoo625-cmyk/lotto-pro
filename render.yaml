@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: lotto-v3-1-render
+    name: lotto-v3-1-render-table
     env: python
     plan: free
     buildCommand: pip install --upgrade pip && pip install -r requirements.txt

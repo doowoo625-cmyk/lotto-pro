@@ -1,73 +1,72 @@
 
 <!doctype html>
 <html lang="ko">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Lotto Prediction v3.1-final</title>
-  <link rel="stylesheet" href="/static/styles.css" />
-</head>
-<body>
-  <div class="container">
-    <header>
-      <h1>로또 예측 시스템 <span class="badge">v3.1-final</span></h1>
-      <div class="status-card">
-        <div>상태: <span id="apiStatus">확인 중…</span></div>
-        <div class="last" id="statusRight">직전 회차 로딩중…</div>
-      </div>
-    </header>
-
-    <section id="section-predict">
-      <h2>① 예측 번호 조회</h2>
-      <div class="controls">
-        <div class="group">
-          <label>Seed: <input id="seed" type="number" placeholder="예: 20251014" /></label>
-          <label>Count: <input id="count" type="number" min="1" max="50" value="5" /></label>
-          <button id="btnPredict">예측 번호 조회</button>
+  <head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title>Lotto v3.1-final (Table UI)</title>
+    <link rel="stylesheet" href="/static/styles.css"/>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <h1>로또 예측 시스템 <span class="badge">v3.1-final</span></h1>
+        <div class="status-card">
+          <div>상태: <b id="apiStatus">확인 중…</b></div>
+          <div id="statusRight" class="rightside">직전 회차 로딩중…</div>
         </div>
-      </div>
-      <div id="bestStrategyBlock" class="cards"></div>
-    </section>
+      </header>
 
-    <section id="section-weekly">
-      <h2>② 이번 주 추천 전략</h2>
-      <div id="weeklyTop3" class="cards"></div>
-    </section>
+      <section class="section">
+        <h2>1. 가장 추천하는 전략(①. 예측 번호 조회로 변경)</h2>
+        <div class="flex">
+          <button id="btnPredict">예측 번호 뽑기</button>
+          <label>Count <input id="count" type="number" min="1" max="50" value="5"/></label>
+          <label>Seed <input id="seed" type="number" placeholder="선택"/></label>
+          <span class="help">5세트 자동 생성 · 근거(%) 표시</span>
+        </div>
+        <div id="tblBest"></div>
+      </section>
 
-    <section id="section-bystrategy">
-      <h2>③ 전략별 추천 (각 5세트)</h2>
-      <div id="byStrategy" class="cards"></div>
-    </section>
+      <section class="section">
+        <h2>2. 이번 주 추천 전략</h2>
+        <div id="tblWeekly"></div>
+      </section>
 
-    <section id="section-recent">
-      <h2>④ 최근 10회 결과</h2>
-      <div class="controls">
-        <div class="group">
-          <label>회차 선택:
-            <select id="selDraw"><option value="all">전체(최근 10회)</option></select>
+      <section class="section">
+        <h2>3. 전략별 추천</h2>
+        <div id="tblByStrategy"></div>
+      </section>
+
+      <section class="section">
+        <h2>4. 최근 10회 결과</h2>
+        <div class="flex">
+          <label>회차 선택
+            <select id="selDraw"><option value="all">최근 10회</option></select>
           </label>
+          <button id="btnRecent">조회</button>
+          <span class="help">※ 기본값: 최신 회차 기준 10회</span>
         </div>
-      </div>
-      <div id="recentBoard" class="cards"></div>
-    </section>
+        <div id="tblRecent"></div>
+      </section>
 
-    <section id="section-ranges">
-      <h2>⑤ 구간별 번호 빈도</h2>
-      <div class="controls">
-        <div class="group">
-          <label>조회 회차(최근 N회):
+      <section class="section">
+        <h2>5. 구간별 번호 빈도</h2>
+        <div class="flex">
+          <label>조회 회차(최근 N회)
             <select id="selWindow">
-              <option>10</option>
-              <option>5</option>
-              <option>20</option>
-              <option>30</option>
+              <option value="10">10회</option>
+              <option value="5">5회</option>
+              <option value="20">20회</option>
+              <option value="30">30회</option>
             </select>
           </label>
+          <button id="btnRange">조회</button>
+          <span class="help">※ 기본값: 10회</span>
         </div>
-      </div>
-      <div id="rangeBoard" class="ranges"></div>
-    </section>
-  </div>
-  <script src="/static/app.js"></script>
-</body>
+        <div id="tblRange"></div>
+      </section>
+    </div>
+    <script src="/static/app.js"></script>
+  </body>
 </html>

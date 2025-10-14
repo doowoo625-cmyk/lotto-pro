@@ -57,7 +57,7 @@ def _metrics(nums: List[int], freq: Dict[int,int]):
     rr = reward / (risk + 1e-6)
     total_counts = sum(freq.values()) or 1
     perc = [round((freq.get(n,0)/total_counts)*100,1) for n in nums]
-    basis = "최근N회"
+    basis = "10회"
     details = " | ".join([f"{n:02d}/{f}/{p}%/{basis}" for n,f,p in zip(nums, fvals, perc)])
     win = min(95.0, max(5.0, score*100.0/(reward+1.0)))
     return dict(reward=round(reward,3), risk=round(risk,3), score=round(score,3),
@@ -86,9 +86,7 @@ def compute_all(seed:int|None, count:int=5, window:int=10):
             best_score = scored[0]["score"]; best_key = s
 
     best_top5 = all_by_strategy[best_key][:5]
-    # section 2 order: 균형형 → 보수형 → 고위험형
     best3 = [best_per_strategy[k] for k in ["Balanced","Conservative","High-Risk"]]
-    # section 3 order: 보수형 → 균형형 → 고위험형
     all_korean = {STRAT_KO[k]: all_by_strategy[k] for k in ["Conservative","Balanced","High-Risk"]}
 
     return dict(last=last, best_key=best_key, best_name_ko=STRAT_KO[best_key],
