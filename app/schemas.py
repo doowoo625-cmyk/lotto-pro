@@ -8,12 +8,9 @@ class Draw(BaseModel):
     numbers: conlist(int, min_length=6, max_length=6)
     bonus: int
 
-class PredictRequest(BaseModel):
-    seed: Optional[int] = Field(default=None)
-    count: int = Field(default=5, ge=1, le=50)
-
 class StrategyPick(BaseModel):
     name: str
+    name_ko: str
     numbers: conlist(int, min_length=6, max_length=6)
     reward: float
     risk: float
@@ -22,13 +19,14 @@ class StrategyPick(BaseModel):
     win: float
     rationale: str
 
+class PredictRequest(BaseModel):
+    seed: Optional[int] = Field(default=None)
+    count: int = Field(default=5, ge=1, le=50)
+
 class PredictResponse(BaseModel):
     last_draw: Draw
-    label: str = "Higher score = better (Reward ÷ (1+Risk))"
-    priority_sorted: List[StrategyPick]  # descending by score
-    all_candidates: Dict[str, List[StrategyPick]]
-    range_freq: Dict[str, Dict[str, int]]
-    top_ranges: List[str]
-    bottom_range: str
-    basis_draw: Draw | None = None
-    recent_last: Draw | None = None
+    best_strategy_key: str
+    best_strategy_name_ko: str
+    best_strategy_top5: List[StrategyPick]
+    best3_by_priority_korean: List[StrategyPick]
+    all_by_strategy_korean: Dict[str, List[StrategyPick]]

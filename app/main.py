@@ -4,10 +4,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
+from typing import Optional
 from .schemas import PredictRequest, PredictResponse, StrategyPick, Draw
-from .logic import generate_predictions
-from .storage import read_last_draw, write_last_draw, read_recent10, write_recent10
-from .official import fetch_draw
+from .logic import compute_all, range_freq
+from .storage import read_last_draw, write_last_draw, read_recent, write_recent
 
 app = FastAPI(title="Lotto Prediction System v3.1-final", version="3.1-final")
 
@@ -34,35 +34,33 @@ def set_last_draw(payload: Draw):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@app.get("/api/recent10")
-def get_recent10():
-    return {"items": read_recent10()}
+@app.get("/api/recent")
+def get_recent():
+    return {"items": read_recent()}
 
-@app.post("/api/recent10")
-def set_recent10(items: list[dict]):
+@app.post("/api/recent")
+def set_recent(items: list[dict]):
     try:
-        out = write_recent10(items)
+        out = write_recent(items)
         return {"items": out}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@app.get("/api/official/{drw_no}")
-async def official_by_no(drw_no: int):
-    data = await fetch_draw(drw_no)
-    if not data:
-        raise HTTPException(status_code=404, detail="not found")
-    return data
+@app.get("/api/range_freq")
+def get_range_freq(window: Optional[int] = 10):
+    if window is None or window <= 0:
+        window = 10
+    per, top2, bottom = range_freq(window)
+    return {"per": per, "top2": top2, "bottom": bottom}
 
 @app.post("/api/predict", response_model=PredictResponse)
 def predict(req: PredictRequest):
-    last, basis, recent_last, best, all_cands, per, top2, bottom = generate_predictions(req.seed, req.count)
+    data = compute_all(req.seed, req.count, window=10)
     return PredictResponse(
-        last_draw=Draw(**last),
-        priority_sorted=[StrategyPick(**b) for b in best],
-        all_candidates={k: [StrategyPick(**x) for x in v] for k,v in all_cands.items()},
-        range_freq=per,
-        top_ranges=top2,
-        bottom_range=bottom,
-        basis_draw=(Draw(**basis) if basis else None),
-        recent_last=(Draw(**recent_last) if recent_last else None)
+        last_draw=Draw(**data["last"]),
+        best_strategy_key=data["best_key"],
+        best_strategy_name_ko=data["best_name_ko"],
+        best_strategy_top5=[StrategyPick(**x) for x in data["best_top5"]],
+        best3_by_priority_korean=[StrategyPick(**x) for x in data["best3"]],
+        all_by_strategy_korean={k: [StrategyPick(**x) for x in v] for k, v in data["all_korean"].items()},
     )
