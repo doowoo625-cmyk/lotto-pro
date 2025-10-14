@@ -1,0 +1,20 @@
+
+*{box-sizing:border-box}body{font-family:system-ui,Arial,sans-serif;margin:0;background:#0b1020;color:#e6ebff}
+.container{max-width:980px;margin:0 auto;padding:24px}
+header h1{margin:0 0 8px;font-size:28px}
+.badge{font-size:14px;background:#3949ab;color:#fff;padding:3px 8px;border-radius:8px}
+.status-card{background:#131b3a;border:1px solid #243065;padding:12px;border-radius:12px;display:flex;justify-content:space-between;gap:16px;align-items:center}
+.controls{margin:18px 0}
+.controls .group{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+label{background:#0f1733;border:1px solid #22306a;padding:8px;border-radius:8px}
+input{background:transparent;border:none;color:#e6ebff;width:160px}
+button{background:#5c6bc0;color:#fff;border:0;padding:10px 14px;border-radius:10px;cursor:pointer}
+button:hover{opacity:.92}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.card{background:#0f1733;border:1px solid #22306a;border-radius:12px;padding:12px}
+.card h3{margin:0 0 8px}
+.pills{display:flex;gap:6px;flex-wrap:wrap}
+.pill{background:#1b2550;border:1px solid #2b3c8f;padding:4px 8px;border-radius:999px}
+.grid{display:grid;grid-template-columns:160px 1fr;gap:8px;align-items:center}
+.hint{opacity:.8;font-size:12px;margin-top:-6px}
+.last{opacity:.9}
