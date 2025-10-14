@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 from .schemas import PredictRequest, PredictResponse, StrategyPick, Draw
 from .logic import generate_predictions
-from .storage import read_last_draw, write_last_draw
+from .storage import read_last_draw, write_last_draw, read_recent10, write_recent10
 
 app = FastAPI(title="Lotto Prediction System v3.1-final", version="3.1-final")
 
@@ -33,12 +33,28 @@ def set_last_draw(payload: Draw):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@app.get("/api/recent10")
+def get_recent10():
+    return {"items": read_recent10()}
+
+@app.post("/api/recent10")
+def set_recent10(items: list[dict]):
+    try:
+        out = write_recent10(items)
+        return {"items": out}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 @app.post("/api/predict", response_model=PredictResponse)
 def predict(req: PredictRequest):
-    last, best, all_cands = generate_predictions(req.seed, req.count)
+    last, basis, recent_last, best, all_cands, per, top2, bottom = generate_predictions(req.seed, req.count)
     return PredictResponse(
         last_draw=Draw(**last),
-        label="Lower score = higher probability",
         priority_sorted=[StrategyPick(**b) for b in best],
-        all_candidates={k: [StrategyPick(**x) for x in v] for k,v in all_cands.items()}
+        all_candidates={k: [StrategyPick(**x) for x in v] for k,v in all_cands.items()},
+        range_freq=per,
+        top_ranges=top2,
+        bottom_range=bottom,
+        basis_draw=(Draw(**basis) if basis else None),
+        recent_last=(Draw(**recent_last) if recent_last else None)
     )

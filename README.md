@@ -1,9 +1,8 @@
-# Lotto Prediction System v3.1-final — Render 전용(파이썬 3.13 호환)
-
-- gunicorn + uvicorn worker
-- pydantic v2 문법(`conlist(min_length, max_length)`) 반영
-- Start/Build 커맨드 Render 로그 기준으로 맞춤
-
-## 배포
-- Blueprint 또는 일반 Web Service로 배포
-- / → index.html, /api/health, /api/last_draw, /api/predict
+# Lotto Prediction v3.1-final (Render 전용, 완성 스펙 반영)
+- 상단: 기준 회차 + 직전 회차 (recent10 파싱)
+- 예측: 버튼 클릭 시만 생성(가중치 기반)
+- 근거: "번호/빈도/확률(%)/기준" 표시
+- 회차 점프: 제거
+- 구간별 개별 번호 빈도 + 상위2/하위1 강조
+- 전략: 보수/균형/고위험 각 1세트, Score 내림차순, R/R, 추정 승률 표시
+- 색상: 1~10 노랑, 11~20 파랑, 21~30 빨강, 31~40 회색, 41~45 초록

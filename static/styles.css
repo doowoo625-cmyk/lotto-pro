@@ -1,6 +1,6 @@
 
 *{box-sizing:border-box}body{font-family:system-ui,Arial,sans-serif;margin:0;background:#0b1020;color:#e6ebff}
-.container{max-width:980px;margin:0 auto;padding:24px}
+.container{max-width:1140px;margin:0 auto;padding:24px}
 header h1{margin:0 0 8px;font-size:28px}
 .badge{font-size:14px;background:#3949ab;color:#fff;padding:3px 8px;border-radius:8px}
 .status-card{background:#131b3a;border:1px solid #243065;padding:12px;border-radius:12px;display:flex;justify-content:space-between;gap:16px;align-items:center}
@@ -10,11 +10,28 @@ label{background:#0f1733;border:1px solid #22306a;padding:8px;border-radius:8px}
 input{background:transparent;border:none;color:#e6ebff;width:160px}
 button{background:#5c6bc0;color:#fff;border:0;padding:10px 14px;border-radius:10px;cursor:pointer}
 button:hover{opacity:.92}
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px}
 .card{background:#0f1733;border:1px solid #22306a;border-radius:12px;padding:12px}
 .card h3{margin:0 0 8px}
 .pills{display:flex;gap:6px;flex-wrap:wrap}
-.pill{background:#1b2550;border:1px solid #2b3c8f;padding:4px 8px;border-radius:999px}
+.pill{display:inline-flex;align-items:center;justify-content:center;min-width:32px;height:32px;border-radius:999px;font-weight:700;border:2px solid rgba(255,255,255,.15);}
+.pill.yellow{background:#facc15;color:#1a1a1a}
+.pill.blue{background:#60a5fa;color:#0b1020}
+.pill.red{background:#f87171;color:#1a1a1a}
+.pill.gray{background:#cbd5e1;color:#0b1020}
+.pill.green{background:#34d399;color:#0b1020}
 .grid{display:grid;grid-template-columns:160px 1fr;gap:8px;align-items:center}
-.hint{opacity:.8;font-size:12px;margin-top:-6px}
-.last{opacity:.9}
+.hint{opacity:.85;font-size:12px;margin-top:-6px}
+.last{opacity:.95}
+.kv{display:flex;gap:10px;flex-wrap:wrap}
+.kv .tag{background:#18224d;padding:4px 8px;border-radius:8px;border:1px solid #2a3c84}
+.ranges{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-top:8px}
+.range{background:#0f1733;border:1px solid #22306a;border-radius:12px;padding:10px}
+.range h4{margin:0 0 8px}
+.range .grid10{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.range.top{outline:2px solid #facc15}
+.range.bottom{opacity:.6}
+.small{font-size:12px;opacity:.9}
+.table{font-size:12px;opacity:.95;margin-top:6px}
+.table .thead{opacity:.8;margin-bottom:4px}
+.table .row{display:flex;gap:8px;flex-wrap:wrap}

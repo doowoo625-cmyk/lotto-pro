@@ -1,63 +1,129 @@
 
 from __future__ import annotations
-import random
-from typing import List, Dict
-from .storage import read_last_draw
+import random, math
+from typing import List, Dict, Tuple
+from collections import Counter
+from .storage import read_last_draw, read_recent10
 
 NUM_RANGE = range(1,46)
 
-def _score_set(nums: List[int], last_nums: List[int]) -> float:
-    nums_sorted = sorted(nums)
-    last_set = set(last_nums)
-    overlap = len(last_set & set(nums_sorted))
-    overlap_penalty = overlap * 2.5
-    target_sum = 138
-    sum_dev = abs(sum(nums_sorted) - target_sum) / 10.0
-    spread = nums_sorted[-1] - nums_sorted[0]
-    spread_score = max(0, 25 - spread) / 8.0
-    odd = sum(1 for n in nums_sorted if n % 2)
-    balance_score = abs(odd - (6-odd)) * 0.7
-    adj_pairs = sum(1 for a,b in zip(nums_sorted, nums_sorted[1:]) if b==a+1)
-    adjacent_penalty = adj_pairs * 0.9
-    endings = [n % 10 for n in nums_sorted]
-    dup_end_penalty = (6 - len(set(endings))) * 0.4
-    return overlap_penalty + sum_dev + spread_score + balance_score + adjacent_penalty + dup_end_penalty
+def _recent_freq()->Counter:
+    draws = read_recent10()
+    cnt = Counter()
+    for d in draws:
+        cnt.update(d["numbers"])
+    return cnt
 
-def _gen_candidates(strategy: str, count: int, rng: random.Random) -> List[List[int]]:
+def _range_buckets()->Dict[str, List[int]]:
+    return {
+        "1-10": list(range(1,11)),
+        "11-20": list(range(11,21)),
+        "21-30": list(range(21,31)),
+        "31-40": list(range(31,41)),
+        "41-45": list(range(41,46)),
+    }
+
+def _per_number_range_freq(cnt: Counter)->Dict[str, Dict[str,int]]:
+    out: Dict[str, Dict[str,int]] = {}
+    for label, nums in _range_buckets().items():
+        out[label] = {str(n): int(cnt.get(n,0)) for n in nums}
+    return out
+
+def _range_strengths(per: Dict[str, Dict[str,int]]):
+    strengths = {label: sum(d.values()) for label, d in per.items()}
+    sortd = sorted(strengths.items(), key=lambda x: x[1], reverse=True)
+    top2 = [sortd[0][0], sortd[1][0]] if len(sortd)>=2 else [sortd[0][0]]
+    bottom = sortd[-1][0]
+    return strengths, top2, bottom
+
+def _gen_candidates(strategy: str, count: int, rng: random.Random, weights: Dict[int, float]) -> List[List[int]]:
+    pool = list(NUM_RANGE)
     if strategy == "Conservative":
-        pool = [n for n in NUM_RANGE if 8 <= n <= 38]
+        pool = [n for n in pool if 8 <= n <= 38]
     elif strategy == "High-Risk":
-        pool = [n for n in NUM_RANGE if n <= 10 or n >= 36]
-    else:
-        pool = list(NUM_RANGE)
+        pool = [n for n in pool if n <= 10 or n >= 36]
     cands = []
     while len(cands) < count:
-        pick = sorted(rng.sample(pool, 6))
-        if sum(1 for a,b in zip(pick, pick[1:]) if b==a+1) <= 2:
-            cands.append(pick)
+        pick = []
+        available = pool[:]
+        local_w = [weights.get(n, 1.0) for n in available]
+        for _ in range(6):
+            tot = sum(local_w)
+            r = rng.random() * tot
+            acc = 0.0
+            idx = 0
+            for i, w in enumerate(local_w):
+                acc += w
+                if acc >= r:
+                    idx = i
+                    break
+            pick.append(available[idx])
+            available.pop(idx); local_w.pop(idx)
+        pick.sort()
+        cands.append(pick)
     return cands
+
+def _metrics(nums: List[int], freq: Dict[int,int])->Tuple[float,float,float,float,float,str]:
+    fvals = [freq.get(n,0) for n in nums]
+    reward = sum(fvals)/len(fvals)
+    mean = sum(nums)/len(nums)
+    var = sum((x-mean)**2 for x in nums)/len(nums)
+    adj = sum(1 for a,b in zip(nums, nums[1:]) if b==a+1)
+    risk = (var/100.0) + (adj*0.8)
+    score = reward / (1.0 + risk)
+    rr = reward / (risk + 1e-6)
+    total_counts = sum(freq.values()) or 1
+    perc = [round((freq.get(n,0)/total_counts)*100,1) for n in nums]
+    basis = "최근10회"
+    details = " | ".join([f"{n:02d}/{f}/{p}%/{basis}" for n,f,p in zip(nums, fvals, perc)])
+    # win% 추정은 score를 0..1로 정규화하는 간단 모델에서 최종적으로 5~95% 사이로 클리핑
+    win = max(5.0, min(95.0, score*100.0/ (reward+1.0)))  # 보수적 추정
+    return reward, risk, score, rr, win, details
 
 def generate_predictions(seed: int | None, count: int = 5):
     last = read_last_draw()
-    last_nums = last["numbers"]
+    recent = read_recent10()
+    recent_cnt = _recent_freq()
+    weights = {n: (recent_cnt.get(n,0) + 1) for n in NUM_RANGE}
+
     rng = random.Random(seed)
     strategies = ["Conservative","Balanced","High-Risk"]
     result = {}
     best = []
+    global_max_score = 1e-9
+
+    # First pass compute and track global max score
+    tmp_all = {}
     for s in strategies:
-        cands = _gen_candidates(s, count, rng)
+        cands = _gen_candidates(s, count, rng, weights)
         scored = []
         for nums in cands:
-            score = _score_set(nums, last_nums)
-            rationale = []
-            rationale.append(f"overlap_with_last={len(set(nums).intersection(last_nums))}")
-            rationale.append(f"spread={nums[-1]-nums[0]}")
-            odd = sum(1 for n in nums if n%2)
-            rationale.append(f"odd_even={odd}:{6-odd}")
-            rationale.append("adjacents=" + str(sum(1 for a,b in zip(nums, nums[1:]) if b==a+1)))
-            scored.append({"name": s, "numbers": nums, "score": round(float(score),3), "rationale": ", ".join(rationale)})
-        scored.sort(key=lambda x: x["score"])
+            reward, risk, score, rr, win, details = _metrics(nums, recent_cnt)
+            global_max_score = max(global_max_score, score)
+            scored.append({"name": s, "numbers": nums, "reward": reward, "risk": risk, "score": score, "rr": rr, "win": win, "rationale": details})
+        tmp_all[s] = scored
+
+    # Second pass: round & sort and push best
+    for s, scored in tmp_all.items():
+        for it in scored:
+            # optional: normalize win% by global max score for readability
+            it["win"] = round(min(95.0, max(5.0, it["score"]/global_max_score*88.0+5.0)), 1)
+            it["reward"] = round(it["reward"],3)
+            it["risk"] = round(it["risk"],3)
+            it["score"] = round(it["score"],3)
+            it["rr"] = round(it["rr"],3)
+        scored.sort(key=lambda x: x["score"], reverse=True)
         result[s] = scored
         best.append(scored[0])
-    best.sort(key=lambda x: x["score"])
-    return last, best, result
+    best.sort(key=lambda x: x["score"], reverse=True)
+
+    per = _per_number_range_freq(recent_cnt)
+    strengths, top2, bottom = _range_strengths(per)
+
+    basis = None
+    recent_last = None
+    if recent:
+        basis = {"draw_no": recent[0]["draw_no"], "numbers": recent[0]["numbers"], "bonus": recent[0]["bonus"]}
+        recent_last = {"draw_no": recent[-1]["draw_no"], "numbers": recent[-1]["numbers"], "bonus": recent[-1]["bonus"]}
+
+    return last, basis, recent_last, best, result, per, top2, bottom
