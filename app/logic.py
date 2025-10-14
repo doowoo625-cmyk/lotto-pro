@@ -1,6 +1,6 @@
 
 from __future__ import annotations
-import random, math
+import random
 from typing import List, Dict, Tuple
 from collections import Counter
 from .storage import read_last_draw, read_recent10
@@ -63,7 +63,7 @@ def _gen_candidates(strategy: str, count: int, rng: random.Random, weights: Dict
         cands.append(pick)
     return cands
 
-def _metrics(nums: List[int], freq: Dict[int,int])->Tuple[float,float,float,float,float,str]:
+def _metrics(nums: List[int], freq: Dict[int,int]):
     fvals = [freq.get(n,0) for n in nums]
     reward = sum(fvals)/len(fvals)
     mean = sum(nums)/len(nums)
@@ -76,42 +76,34 @@ def _metrics(nums: List[int], freq: Dict[int,int])->Tuple[float,float,float,floa
     perc = [round((freq.get(n,0)/total_counts)*100,1) for n in nums]
     basis = "최근10회"
     details = " | ".join([f"{n:02d}/{f}/{p}%/{basis}" for n,f,p in zip(nums, fvals, perc)])
-    # win% 추정은 score를 0..1로 정규화하는 간단 모델에서 최종적으로 5~95% 사이로 클리핑
-    win = max(5.0, min(95.0, score*100.0/ (reward+1.0)))  # 보수적 추정
-    return reward, risk, score, rr, win, details
+    win = min(95.0, max(5.0, score*100.0/(reward+1.0)))
+    return dict(reward=round(reward,3), risk=round(risk,3), score=round(score,3),
+                rr=round(rr,3), win=round(win,1), details=details)
 
 def generate_predictions(seed: int | None, count: int = 5):
     last = read_last_draw()
     recent = read_recent10()
     recent_cnt = _recent_freq()
-    weights = {n: (recent_cnt.get(n,0) + 1) for n in NUM_RANGE}
+    weights = {n: (recent_cnt.get(n,0) + 1) for n in range(1,46)}
 
     rng = random.Random(seed)
     strategies = ["Conservative","Balanced","High-Risk"]
     result = {}
     best = []
     global_max_score = 1e-9
-
-    # First pass compute and track global max score
     tmp_all = {}
     for s in strategies:
         cands = _gen_candidates(s, count, rng, weights)
         scored = []
         for nums in cands:
-            reward, risk, score, rr, win, details = _metrics(nums, recent_cnt)
-            global_max_score = max(global_max_score, score)
-            scored.append({"name": s, "numbers": nums, "reward": reward, "risk": risk, "score": score, "rr": rr, "win": win, "rationale": details})
+            m = _metrics(nums, recent_cnt)
+            global_max_score = max(global_max_score, m["score"])
+            scored.append({"name": s, "numbers": nums, **m})
         tmp_all[s] = scored
 
-    # Second pass: round & sort and push best
     for s, scored in tmp_all.items():
         for it in scored:
-            # optional: normalize win% by global max score for readability
             it["win"] = round(min(95.0, max(5.0, it["score"]/global_max_score*88.0+5.0)), 1)
-            it["reward"] = round(it["reward"],3)
-            it["risk"] = round(it["risk"],3)
-            it["score"] = round(it["score"],3)
-            it["rr"] = round(it["rr"],3)
         scored.sort(key=lambda x: x["score"], reverse=True)
         result[s] = scored
         best.append(scored[0])

@@ -7,6 +7,7 @@ from pathlib import Path
 from .schemas import PredictRequest, PredictResponse, StrategyPick, Draw
 from .logic import generate_predictions
 from .storage import read_last_draw, write_last_draw, read_recent10, write_recent10
+from .official import fetch_draw
 
 app = FastAPI(title="Lotto Prediction System v3.1-final", version="3.1-final")
 
@@ -44,6 +45,13 @@ def set_recent10(items: list[dict]):
         return {"items": out}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/official/{drw_no}")
+async def official_by_no(drw_no: int):
+    data = await fetch_draw(drw_no)
+    if not data:
+        raise HTTPException(status_code=404, detail="not found")
+    return data
 
 @app.post("/api/predict", response_model=PredictResponse)
 def predict(req: PredictRequest):

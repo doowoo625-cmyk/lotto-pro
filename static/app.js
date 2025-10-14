@@ -14,38 +14,31 @@ function lottoColor(n){
 }
 const pill = (n)=> `<span class="pill ${lottoColor(n)}">${String(n).padStart(2,'0')}</span>`;
 
-async function refreshStatus(){
-  // health
+async function refreshTop(){
   try{
     const h = await getJSON("/api/health");
     document.getElementById("apiStatus").textContent = h.ok ? "정상" : "점검 필요";
   }catch(e){
     document.getElementById("apiStatus").textContent = "오프라인";
   }
-  // basis & recent last from recent10
   try{
     const recent = await getJSON("/api/recent10");
     const items = recent.items || [];
     let basis = null, last = null;
-    if (items.length>0){
-      basis = items[0]; last = items[items.length-1];
-    }else{
-      const fallback = await getJSON("/api/last_draw");
-      basis = fallback; last = fallback;
-    }
+    if (items.length>0){ basis = items[0]; last = items[items.length-1]; }
     const right = document.getElementById("statusRight");
-    right.innerHTML = `기준 회차(<b>${basis.draw_no}</b>): ${basis.numbers.map(pill).join(" ")} | 보너스 ${pill(basis.bonus)} &nbsp;·&nbsp; 직전 회차(<b>${last.draw_no}</b>): ${last.numbers.map(pill).join(" ")} | 보너스 ${pill(last.bonus)}`;
-    // also seed inputs with last
-    document.getElementById("inpDrawNo").value = last.draw_no || 0;
-    document.getElementById("inpNumbers").value = (last.numbers||[]).join(",");
-    document.getElementById("inpBonus").value = last.bonus || 0;
+    if (basis && last){
+      right.innerHTML = `기준(<b>${basis.draw_no}</b>): ${basis.numbers.map(pill).join(" ")} | 보너스 ${pill(basis.bonus)} &nbsp;·&nbsp; 직전(<b>${last.draw_no}</b>): ${last.numbers.map(pill).join(" ")} | 보너스 ${pill(last.bonus)}`;
+    }else{
+      right.textContent = "recent10 데이터가 필요합니다.";
+    }
   }catch(e){}
 }
 
-function renderPriority(list){
-  const box = document.getElementById("priorityList");
+function renderStrategyCards(pris){
+  const box = document.getElementById("strategyCards");
   box.innerHTML = "";
-  list.forEach((item, idx)=>{
+  pris.forEach((item, idx)=>{
     const el = document.createElement("div");
     el.className = "card";
     el.innerHTML = `
@@ -59,24 +52,24 @@ function renderPriority(list){
       <div class="table">
         <div class="thead">번호 / 빈도 / 확률(%) / 기준</div>
         <div class="row small">${item.rationale}</div>
-      </div>
-    `;
+      </div>`;
     box.appendChild(el);
   });
 }
 
 function renderAll(all){
-  const box = document.getElementById("allCandidates");
-  box.innerHTML = "";
+  const by = document.getElementById("byStrategy");
+  by.innerHTML = "";
   Object.keys(all).forEach(k=>{
-    const group = document.createElement("div");
-    group.innerHTML = `<h3>${k}</h3>`;
+    const card = document.createElement("div");
+    card.className = "card";
     const grid = document.createElement("div");
     grid.className = "cards";
     all[k].forEach((it)=>{
-      const card = document.createElement("div");
-      card.className = "card";
-      card.innerHTML = `
+      const inner = document.createElement("div");
+      inner.className = "card";
+      inner.innerHTML = `
+        <h3>${k}</h3>
         <div class="pills">${it.numbers.map(n=>pill(n)).join("")}</div>
         <div class="kv">
           <span class="tag">Score: ${it.score}</span>
@@ -86,12 +79,11 @@ function renderAll(all){
         <div class="table">
           <div class="thead">번호 / 빈도 / 확률(%) / 기준</div>
           <div class="row small">${it.rationale}</div>
-        </div>
-      `;
-      grid.appendChild(card);
+        </div>`;
+      grid.appendChild(inner);
     });
-    group.appendChild(grid);
-    box.appendChild(group);
+    card.appendChild(grid);
+    by.appendChild(card);
   });
 }
 
@@ -115,6 +107,17 @@ function renderRanges(per, topRanges, bottomRange){
   });
 }
 
+function renderRecent(items){
+  const root = document.getElementById("recent10Board");
+  root.innerHTML = "";
+  (items||[]).slice(-10).reverse().forEach(it=>{
+    const c = document.createElement("div");
+    c.className = "recentcard";
+    c.innerHTML = `<b>${it.draw_no}회</b> — ${it.numbers.map(pill).join(" ")} | 보너스 ${pill(it.bonus)}`;
+    root.appendChild(c);
+  });
+}
+
 async function doPredict(){
   const seedVal = document.getElementById("seed").value;
   const countVal = parseInt(document.getElementById("count").value || "5", 10);
@@ -125,30 +128,17 @@ async function doPredict(){
     headers: {"Content-Type":"application/json"},
     body: JSON.stringify(body)
   });
-  renderPriority(res.priority_sorted);
+  renderStrategyCards(res.priority_sorted);
   renderAll(res.all_candidates);
   renderRanges(res.range_freq, res.top_ranges, res.bottom_range);
 }
 
-async function saveLast(){
-  const draw_no = parseInt(document.getElementById("inpDrawNo").value||"0",10);
-  const numbers = document.getElementById("inpNumbers").value.split(",").map(s=>parseInt(s.trim(),10)).filter(n=>!isNaN(n));
-  const bonus = parseInt(document.getElementById("inpBonus").value||"0",10);
-  await getJSON("/api/last_draw", {
-    method: "POST",
-    headers: {"Content-Type":"application/json"},
-    body: JSON.stringify({draw_no, numbers, bonus})
-  });
-  await refreshStatus();
-  alert("저장 완료");
-}
 async function loadRecent10(){
   const r = await getJSON("/api/recent10");
-  console.log("recent10", r);
-  alert("최근10 불러오기 완료. 예측을 다시 실행하세요.");
+  renderRecent(r.items);
+  await refreshTop();
 }
 
 document.getElementById("btnPredict").addEventListener("click", doPredict);
-document.getElementById("btnSaveLast").addEventListener("click", saveLast);
 document.getElementById("btnLoadRecent10").addEventListener("click", loadRecent10);
-refreshStatus();
+refreshTop();

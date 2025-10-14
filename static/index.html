@@ -9,44 +9,55 @@
 </head>
 <body>
   <div class="container">
+    <!-- 최상단 상태 -->
     <header>
       <h1>로또 예측 시스템 <span class="badge">v3.1-final</span></h1>
       <div class="status-card">
         <div>상태: <span id="apiStatus">확인 중…</span></div>
-        <div class="last" id="statusRight">기준/직전 회차 정보를 불러오는 중…</div>
+        <div class="last" id="statusRight">기준/직전 회차 로딩중…</div>
       </div>
     </header>
 
-    <section class="controls">
-      <div class="group">
-        <label>Seed: <input id="seed" type="number" placeholder="예: 20251014" /></label>
-        <label>Count: <input id="count" type="number" min="1" max="50" value="5" /></label>
-        <button id="btnPredict">예측 번호 뽑기</button>
-      </div>
-      <details>
-        <summary>데이터 입력</summary>
+    <!-- ① 예측_번호 -->
+    <section id="section-predict">
+      <h2>① 예측 번호 — 5세트 번호 + 근거(%)</h2>
+      <div class="controls">
         <div class="group">
-          <label>회차: <input id="inpDrawNo" type="number" min="0" /></label>
-          <label>번호 6개: <input id="inpNumbers" type="text" placeholder="예: 3,7,12,18,29,41" /></label>
-          <label>보너스: <input id="inpBonus" type="number" min="0" max="45" /></label>
-          <button id="btnSaveLast">저장</button>
-          <button id="btnLoadRecent10">최근10 불러오기</button>
+          <label>Seed: <input id="seed" type="number" placeholder="예: 20251014" /></label>
+          <label>Count: <input id="count" type="number" min="1" max="50" value="5" /></label>
+          <button id="btnPredict">예측 번호 뽑기</button>
         </div>
-      </details>
-    </section>
-
-    <section>
-      <h2>이번 주 추천 전략 (Score 내림차순)</h2>
-      <div id="priorityList" class="cards"></div>
-    </section>
-
-    <section>
-      <h2>전략별 전체 후보</h2>
+      </div>
+      <div id="strategyCards" class="cards"></div>
       <div id="allCandidates"></div>
     </section>
 
-    <section>
-      <h2>구간별 번호 빈도</h2>
+    <!-- ② 이번주_전략카드 -->
+    <section id="section-strategy">
+      <h2>② 이번 주 전략 카드</h2>
+      <p class="hint">보수형/균형형/고위험형 각 1세트 — <b>Score 내림차순</b></p>
+    </section>
+
+    <!-- ③ 전략별 추천 (각 5세트) -->
+    <section id="section-bystrategy">
+      <h2>③ 전략별 추천 (각 5세트)</h2>
+      <div id="byStrategy" class="cards"></div>
+    </section>
+
+    <!-- ④ 최근 10회 결과 -->
+    <section id="section-recent10">
+      <h2>④ 최근 10회 결과</h2>
+      <div class="controls">
+        <div class="group">
+          <button id="btnLoadRecent10">최근10 불러오기(서버)</button>
+        </div>
+      </div>
+      <div id="recent10Board" class="cards"></div>
+    </section>
+
+    <!-- ⑥ 구간별 번호 빈도 -->
+    <section id="section-ranges">
+      <h2>⑥ 구간별 번호 빈도 (조회 회차 수: 최근10 기준)</h2>
       <p class="hint">각 구간의 개별 번호 출현 빈도. 상위 2개 구간 강조(#facc15), 하위 1개 구간 흐림(#cbd5e1).</p>
       <div id="rangeBoard" class="ranges"></div>
     </section>

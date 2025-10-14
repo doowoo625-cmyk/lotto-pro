@@ -4,9 +4,9 @@ from pydantic import BaseModel, Field, conlist
 from typing import Optional, List, Dict
 
 class Draw(BaseModel):
-    draw_no: int = 0
+    draw_no: int
     numbers: conlist(int, min_length=6, max_length=6)
-    bonus: int = 0
+    bonus: int
 
 class PredictRequest(BaseModel):
     seed: Optional[int] = Field(default=None)
@@ -27,8 +27,8 @@ class PredictResponse(BaseModel):
     label: str = "Higher score = better (Reward ÷ (1+Risk))"
     priority_sorted: List[StrategyPick]  # descending by score
     all_candidates: Dict[str, List[StrategyPick]]
-    range_freq: Dict[str, Dict[str, int]]  # per-number freq by ranges
+    range_freq: Dict[str, Dict[str, int]]
     top_ranges: List[str]
     bottom_range: str
-    basis_draw: Draw | None = None  # 기준 회차(최근10의 첫 항목)
-    recent_last: Draw | None = None  # 직전 회차(최근10의 마지막 항목)
+    basis_draw: Draw | None = None
+    recent_last: Draw | None = None
