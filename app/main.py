@@ -1,7 +1,7 @@
 # app/main.py
 from __future__ import annotations
-import os
-from fastapi import FastAPI, HTTPException
+import asyncio
+from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
@@ -11,10 +11,7 @@ from .logic import compute_all, range_freq_from_draws
 from .storage import read_last_draw, write_last_draw, read_recent, write_recent
 from .fetcher import fetch_draw, fetch_recent, latest_draw_no
 
-# 🔧 라이브 조회 토글 (기본 OFF)
-LIVE_FETCH = os.getenv("LIVE_FETCH","0") == "1"
-
-app = FastAPI(title="Lotto Prediction System v3.1-final", version="3.1-final-clean")
+app = FastAPI(title="Lotto v3.1-final SWR", version="3.1-SWR")
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -23,71 +20,82 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 def index():
     return (STATIC_DIR / "index.html").read_text(encoding="utf-8")
 
-@app.get("/api/health")
-def health():
-    return {"ok": True, "version": "3.1-final-clean", "live_fetch": LIVE_FETCH}
+# 🔁 백그라운드 최신화기: 느린 네트워크는 뒤에서만 처리
+async def _refresh_recent(end_no: int, n: int = 10):
+    try:
+        items = await fetch_recent(end_no, n)
+        if items:
+            write_recent(items)
+            write_last_draw(items[-1])
+    except Exception:
+        pass
 
-@app.get("/api/latest")
-async def api_latest():
-    # 라이브가 꺼져 있거나 실패하면 로컬 캐시 사용
-    if not LIVE_FETCH:
-        items = read_recent()
-        last = items[-1] if items else read_last_draw()
-        return last
+async def _refresh_latest():
     try:
         no = await latest_draw_no(9999)
         data = await fetch_draw(no)
-        return data
-    except Exception:
+        # 최신 회차로 recent 갱신(윈도 10)
         items = read_recent()
-        last = items[-1] if items else read_last_draw()
-        return last
+        if not items or items[-1]["draw_no"] < data["draw_no"]:
+            last10 = (items + [data])[-10:]
+            write_recent(last10)
+            write_last_draw(last10[-1])
+    except Exception:
+        pass
 
-@app.get("/api/dhlottery/draw", response_model=Draw)
-async def api_draw(no: int):
-    if not LIVE_FETCH:
-        items = read_recent()
-        for it in items:
-            if it.get("draw_no")==no:
-                return Draw(**it)
-        return Draw(**(items[-1] if items else read_last_draw()))
-    try:
-        data = await fetch_draw(no)
-        return Draw(**data)
-    except Exception:
-        items = read_recent()
-        return Draw(**(items[-1] if items else read_last_draw()))
+@app.on_event("startup")
+async def startup():
+    # 서버 부팅 시 한번 최신화 시도(동기화는 백그라운드)
+    asyncio.create_task(_refresh_latest())
+
+@app.get("/api/latest")
+async def api_latest():
+    # 1) 즉시 캐시 리턴
+    last = read_last_draw()
+    # 2) 뒤에서 최신화
+    asyncio.create_task(_refresh_latest())
+    return last
 
 @app.get("/api/dhlottery/recent")
-async def api_recent(end_no: int, n: int = 10):
-    if not LIVE_FETCH:
-        items = read_recent()
-        return {"items": items[-n:]}
-    try:
-        items = await fetch_recent(end_no, n)
-        return {"items": items}
-    except Exception:
-        items = read_recent()
-        return {"items": items[-n:]}
+async def api_recent(end_no: Optional[int] = None, n: int = 10):
+    # 1) 즉시 캐시 리턴
+    items = read_recent()
+    if end_no and items and end_no >= items[-1]["draw_no"]:
+        view = items[-n:]
+    elif end_no:
+        # 입력 회차 이전 n개
+        view = [x for x in items if x["draw_no"] <= end_no][-n:]
+    else:
+        view = items[-n:]
+    # 2) 뒤에서 최신화
+    if end_no:
+        asyncio.create_task(_refresh_recent(end_no, n))
+    else:
+        last_no = items[-1]["draw_no"] if items else 1
+        asyncio.create_task(_refresh_recent(last_no, n))
+    return {"items": view}
+
+@app.get("/api/range_freq_by_end")
+async def api_range_freq(end_no: Optional[int] = None, n: int = 10):
+    # 1) 즉시 캐시 기반 계산
+    items_all = read_recent()
+    base_end = end_no or (items_all[-1]["draw_no"] if items_all else 1)
+    window = [x for x in items_all if x["draw_no"] <= base_end][-n:]
+    per, top2, bottom = range_freq_from_draws(window)
+    # 2) 뒤에서 최신화
+    asyncio.create_task(_refresh_recent(base_end, n))
+    return {"per": per, "top2": top2, "bottom": bottom, "end_no": base_end, "n": n}
 
 @app.post("/api/predict", response_model=PredictResponse)
 async def predict(req: PredictRequest, end_no: Optional[int] = None, n: int = 10):
-    # 라이브 실패/비활성 시 즉시 로컬로 처리
-    items: List[Dict[str, Any]] = []
-    if LIVE_FETCH:
-        try:
-            if end_no:
-                items = await fetch_recent(end_no, n)
-            else:
-                latest = await latest_draw_no(9999)
-                items = await fetch_recent(latest, n)
-        except Exception:
-            items = read_recent()
-    else:
-        items = read_recent()
-
-    data = compute_all(req.seed, items, req.count, window=n)
-    last = items[-1] if items else read_last_draw()
+    # 1) 즉시 캐시로 계산
+    items = read_recent()
+    base_end = end_no or (items[-1]["draw_no"] if items else 1)
+    window = [x for x in items if x["draw_no"] <= base_end][-n:]
+    data = compute_all(req.seed, window, req.count, window=n)
+    last = window[-1] if window else read_last_draw()
+    # 2) 뒤에서 최신화
+    asyncio.create_task(_refresh_recent(base_end, n))
     return PredictResponse(
         last_draw=Draw(**last),
         best_strategy_key=data["best_key"],
@@ -96,16 +104,3 @@ async def predict(req: PredictRequest, end_no: Optional[int] = None, n: int = 10
         best3_by_priority_korean=[StrategyPick(**x) for x in data["best3"]],
         all_by_strategy_korean={k: [StrategyPick(**x) for x in v] for k, v in data["all_korean"].items()},
     )
-
-@app.get("/api/range_freq_by_end")
-async def api_range_freq(end_no: int, n: int = 10):
-    if LIVE_FETCH:
-        try:
-            items = await fetch_recent(end_no, n)
-            per, top2, bottom = range_freq_from_draws(items)
-            return {"per": per, "top2": top2, "bottom": bottom, "end_no": end_no, "n": n}
-        except Exception:
-            pass
-    items = read_recent()[-n:]
-    per, top2, bottom = range_freq_from_draws(items)
-    return {"per": per, "top2": top2, "bottom": bottom, "end_no": end_no, "n": n}
