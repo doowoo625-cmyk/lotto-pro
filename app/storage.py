@@ -1,78 +1,62 @@
-
+# app/storage.py
 from __future__ import annotations
-import json
 from pathlib import Path
-from typing import Dict, Any, List
+import json
+from typing import List, Dict, Any
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
-LAST_DRAW_PATH = DATA_DIR / "last_draw.json"
 RECENT_PATH = DATA_DIR / "recent.json"
+LAST_PATH = DATA_DIR / "last.json"
 
-DEFAULT_LAST_DRAW = {"draw_no": 0, "numbers": [1,2,3,4,5,6], "bonus": 7, "date": None}
+# ✅ 즉시 응답용 내장 스냅샷(형식 고정)
+#   필요 시 최근 데이터로 교체해도 되고, 없으면 이 값으로 즉시 화면 채움
+DEFAULT_RECENT: List[Dict[str, Any]] = [
+    # 예시 포맷(오름차순 정렬 기준): draw_no, numbers(정렬), bonus, date
+    {"draw_no": 1184, "numbers":[2,5,12,19,28,41], "bonus":8,  "date":"2024-08-10"},
+    {"draw_no": 1185, "numbers":[1,3,9,15,34,45],  "bonus":23, "date":"2024-08-17"},
+    {"draw_no": 1186, "numbers":[4,6,7,21,36,39],  "bonus":12, "date":"2024-08-24"},
+    {"draw_no": 1187, "numbers":[10,11,14,16,24,42],"bonus":31,"date":"2024-08-31"},
+    {"draw_no": 1188, "numbers":[2,13,18,26,33,41], "bonus":27,"date":"2024-09-07"},
+    {"draw_no": 1189, "numbers":[5,7,8,25,29,40],   "bonus":2,  "date":"2024-09-14"},
+    {"draw_no": 1190, "numbers":[3,6,12,15,23,39],  "bonus":17, "date":"2024-09-21"},
+    {"draw_no": 1191, "numbers":[1,4,14,16,38,41],  "bonus":20, "date":"2024-09-28"},
+    {"draw_no": 1192, "numbers":[1,2,3,4,6,7],      "bonus":9,  "date":"2024-10-05"},
+    {"draw_no": 1193, "numbers":[1,2,5,9,15,34],    "bonus":23, "date":"2024-10-12"},
+]
 
-def read_last_draw() -> Dict[str, Any]:
-    if LAST_DRAW_PATH.exists():
-        try:
-            with open(LAST_DRAW_PATH, "r", encoding="utf-8") as f:
-                payload = json.load(f)
-                if isinstance(payload.get("numbers"), list) and len(payload["numbers"])==6:
-                    return payload
-        except Exception:
-            pass
-    write_last_draw(DEFAULT_LAST_DRAW)
-    return DEFAULT_LAST_DRAW
-
-def write_last_draw(payload: Dict[str, Any]) -> Dict[str, Any]:
-    nums = sorted({int(x) for x in payload.get("numbers", []) if 1 <= int(x) <= 45})
-    if len(nums) != 6:
-        raise ValueError("numbers must be 6 unique integers between 1 and 45")
-    out = {
-        "draw_no": int(payload.get("draw_no", 0)),
-        "numbers": nums,
-        "bonus": int(payload.get("bonus", 0)) if 1 <= int(payload.get("bonus", 0)) <= 45 else 0,
-        "date": payload.get("date"),
-    }
-    with open(LAST_DRAW_PATH, "w", encoding="utf-8") as f:
-        json.dump(out, f, ensure_ascii=False, indent=2)
-    return out
+def _safe_read(path: Path, default):
+    try:
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return default
 
 def read_recent() -> List[Dict[str, Any]]:
-    if RECENT_PATH.exists():
-        try:
-            with open(RECENT_PATH, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if isinstance(data, list):
-                    clean = []
-                    for it in data:
-                        if isinstance(it.get("numbers"), list) and len(it["numbers"])==6:
-                            clean.append({
-                                "draw_no": int(it.get("draw_no",0)),
-                                "numbers": sorted(it["numbers"]),
-                                "bonus": int(it.get("bonus",0)),
-                                "date": it.get("date")
-                            })
-                    return clean
-        except Exception:
-            pass
-    last = read_last_draw()
-    seed = [{"draw_no": last["draw_no"], "numbers": last["numbers"], "bonus": last["bonus"], "date": last.get("date")}]
-    with open(RECENT_PATH, "w", encoding="utf-8") as f:
-        json.dump(seed, f, ensure_ascii=False, indent=2)
-    return seed
+    # 항상 즉시 결과 반환(파일 없거나 파싱 실패해도 DEFAULT로)
+    data = _safe_read(RECENT_PATH, DEFAULT_RECENT)
+    # 보정: 정렬·필드 타입 통일
+    data = sorted(data, key=lambda x: int(x.get("draw_no", 0)))
+    for it in data:
+        it["numbers"] = sorted([int(n) for n in it.get("numbers", [])])
+        it["bonus"] = int(it.get("bonus", 0))
+        it["draw_no"] = int(it.get("draw_no", 0))
+    return data
 
-def write_recent(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    clean: List[Dict[str, Any]] = []
-    for it in items:
-        nums = sorted({int(x) for x in it.get("numbers", []) if 1 <= int(x) <= 45})
-        if len(nums) != 6:
-            raise ValueError("Each draw must have exactly 6 unique numbers 1..45")
-        clean.append({
-            "draw_no": int(it.get("draw_no", 0)),
-            "numbers": sorted(nums),
-            "bonus": int(it.get("bonus", 0)) if 1 <= int(it.get("bonus", 0)) <= 45 else 0,
-            "date": it.get("date")
-        })
-    with open(RECENT_PATH, "w", encoding="utf-8") as f:
-        json.dump(clean, f, ensure_ascii=False, indent=2)
-    return clean
+def write_recent(items: List[Dict[str, Any]]):
+    try:
+        RECENT_PATH.write_text(json.dumps(items, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+def read_last_draw() -> Dict[str, Any]:
+    # 최근 목록의 마지막을 곧바로 반환(없으면 DEFAULT 마지막)
+    items = read_recent()
+    return items[-1] if items else DEFAULT_RECENT[-1]
+
+def write_last_draw(item: Dict[str, Any]):
+    try:
+        LAST_PATH.write_text(json.dumps(item, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
