@@ -7,6 +7,7 @@ class Draw(BaseModel):
     draw_no: int
     numbers: conlist(int, min_length=6, max_length=6)
     bonus: int
+    date: str | None = None
 
 class StrategyPick(BaseModel):
     name: str

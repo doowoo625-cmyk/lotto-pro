@@ -9,7 +9,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 LAST_DRAW_PATH = DATA_DIR / "last_draw.json"
 RECENT_PATH = DATA_DIR / "recent.json"
 
-DEFAULT_LAST_DRAW = {"draw_no": 0, "numbers": [1,2,3,4,5,6], "bonus": 7}
+DEFAULT_LAST_DRAW = {"draw_no": 0, "numbers": [1,2,3,4,5,6], "bonus": 7, "date": None}
 
 def read_last_draw() -> Dict[str, Any]:
     if LAST_DRAW_PATH.exists():
@@ -31,6 +31,7 @@ def write_last_draw(payload: Dict[str, Any]) -> Dict[str, Any]:
         "draw_no": int(payload.get("draw_no", 0)),
         "numbers": nums,
         "bonus": int(payload.get("bonus", 0)) if 1 <= int(payload.get("bonus", 0)) <= 45 else 0,
+        "date": payload.get("date"),
     }
     with open(LAST_DRAW_PATH, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, indent=2)
@@ -45,12 +46,17 @@ def read_recent() -> List[Dict[str, Any]]:
                     clean = []
                     for it in data:
                         if isinstance(it.get("numbers"), list) and len(it["numbers"])==6:
-                            clean.append({"draw_no": int(it.get("draw_no",0)), "numbers": sorted(it["numbers"]), "bonus": int(it.get("bonus",0))})
+                            clean.append({
+                                "draw_no": int(it.get("draw_no",0)),
+                                "numbers": sorted(it["numbers"]),
+                                "bonus": int(it.get("bonus",0)),
+                                "date": it.get("date")
+                            })
                     return clean
         except Exception:
             pass
     last = read_last_draw()
-    seed = [{"draw_no": last["draw_no"], "numbers": last["numbers"], "bonus": last["bonus"]}]
+    seed = [{"draw_no": last["draw_no"], "numbers": last["numbers"], "bonus": last["bonus"], "date": last.get("date")}]
     with open(RECENT_PATH, "w", encoding="utf-8") as f:
         json.dump(seed, f, ensure_ascii=False, indent=2)
     return seed
@@ -65,6 +71,7 @@ def write_recent(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             "draw_no": int(it.get("draw_no", 0)),
             "numbers": sorted(nums),
             "bonus": int(it.get("bonus", 0)) if 1 <= int(it.get("bonus", 0)) <= 45 else 0,
+            "date": it.get("date")
         })
     with open(RECENT_PATH, "w", encoding="utf-8") as f:
         json.dump(clean, f, ensure_ascii=False, indent=2)

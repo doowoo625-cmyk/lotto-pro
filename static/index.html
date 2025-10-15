@@ -1,72 +1,67 @@
 
-<!doctype html>
-<html lang="ko">
-  <head>
-    <meta charset="utf-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1"/>
-    <title>Lotto v3.1-final (Table UI)</title>
-    <link rel="stylesheet" href="/static/styles.css"/>
-  </head>
-  <body>
-    <div class="container">
-      <header>
-        <h1>로또 예측 시스템 <span class="badge">v3.1-final</span></h1>
-        <div class="status-card">
-          <div>상태: <b id="apiStatus">확인 중…</b></div>
-          <div id="statusRight" class="rightside">직전 회차 로딩중…</div>
-        </div>
-      </header>
-
-      <section class="section">
-        <h2>1. 가장 추천하는 전략(①. 예측 번호 조회로 변경)</h2>
-        <div class="flex">
-          <button id="btnPredict">예측 번호 뽑기</button>
-          <label>Count <input id="count" type="number" min="1" max="50" value="5"/></label>
-          <label>Seed <input id="seed" type="number" placeholder="선택"/></label>
-          <span class="help">5세트 자동 생성 · 근거(%) 표시</span>
-        </div>
-        <div id="tblBest"></div>
-      </section>
-
-      <section class="section">
-        <h2>2. 이번 주 추천 전략</h2>
-        <div id="tblWeekly"></div>
-      </section>
-
-      <section class="section">
-        <h2>3. 전략별 추천</h2>
-        <div id="tblByStrategy"></div>
-      </section>
-
-      <section class="section">
-        <h2>4. 최근 10회 결과</h2>
-        <div class="flex">
-          <label>회차 선택
-            <select id="selDraw"><option value="all">최근 10회</option></select>
-          </label>
-          <button id="btnRecent">조회</button>
-          <span class="help">※ 기본값: 최신 회차 기준 10회</span>
-        </div>
-        <div id="tblRecent"></div>
-      </section>
-
-      <section class="section">
-        <h2>5. 구간별 번호 빈도</h2>
-        <div class="flex">
-          <label>조회 회차(최근 N회)
-            <select id="selWindow">
-              <option value="10">10회</option>
-              <option value="5">5회</option>
-              <option value="20">20회</option>
-              <option value="30">30회</option>
-            </select>
-          </label>
-          <button id="btnRange">조회</button>
-          <span class="help">※ 기본값: 10회</span>
-        </div>
-        <div id="tblRange"></div>
-      </section>
+<!doctype html><html lang="ko"><head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Lotto v3.1-final (Clean)</title>
+<link rel="stylesheet" href="/static/styles.css"/>
+</head><body>
+<div class="container">
+  <header>
+    <h1>로또 예측 시스템 <span class="badge">v3.1-final</span></h1>
+    <div class="status">
+      <div>상태: <b id="apiStatus">확인 중…</b></div>
+      <div id="statusRight" class="right">직전 회차 로딩중…</div>
     </div>
-    <script src="/static/app.js"></script>
-  </body>
-</html>
+  </header>
+
+  <section>
+    <h2>① 예측 번호 조회</h2>
+    <div class="controls">
+      <button id="btnPredict">예측 번호 뽑기</button>
+      <span class="small subtle">버튼 클릭 시만 생성 · 근거(%) 표시</span>
+    </div>
+    <div id="bestBlock" class="card section-grid"></div>
+  </section>
+
+  <section>
+    <h2>② 이번 주 추천 전략</h2>
+    <div id="weeklyBlock" class="grid-3"></div>
+  </section>
+
+  <section>
+    <h2>③ 전략별 추천 (각 5세트)</h2>
+    <div id="byStrategyBlock" class="section-grid"></div>
+  </section>
+
+  <section>
+    <h2>④ 최근 10회 결과</h2>
+    <div class="controls">
+      <label>기준 회차
+        <input id="inpEndDraw" type="number" class="mono" placeholder="예: 1193" list="dlDraws"/>
+        <datalist id="dlDraws"></datalist>
+      </label>
+      <button id="btnRecent">조회</button>
+      <span class="small subtle">기본: 최신 기준 10회</span>
+    </div>
+    <div id="recentBlock" class="card section-grid"></div>
+  </section>
+
+  <section>
+    <h2>⑤ 구간별 번호 빈도</h2>
+    <div class="controls">
+      <label>기준 회차
+        <input id="inpEndDraw2" type="number" class="mono" placeholder="예: 1193" list="dlDraws2"/>
+        <datalist id="dlDraws2"></datalist>
+      </label>
+      <label>조회 회차(N)
+        <select id="selWindow">
+          <option value="10">10회</option><option value="5">5회</option>
+          <option value="20">20회</option><option value="30">30회</option>
+        </select>
+      </label>
+      <button id="btnRange">조회</button>
+    </div>
+    <div id="rangeBlock" class="grid-3"></div>
+  </section>
+</div>
+<script src="/static/app.js"></script>
+</body></html>

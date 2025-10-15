@@ -1,21 +1,20 @@
 
 from __future__ import annotations
 import random
-from typing import List, Dict
+from typing import List, Dict, Tuple
 from collections import Counter
-from .storage import read_last_draw, read_recent
 
 NUM_RANGE = range(1,46)
 
 STRAT_KEYS = ["Conservative","Balanced","High-Risk"]
 STRAT_KO = {"Conservative":"보수형","Balanced":"균형형","High-Risk":"고위험형"}
 
-def _recent_freq(window:int|None=None)->Counter:
-    draws = read_recent()
-    if window is not None and window>0 and len(draws)>window:
-        draws = draws[-window:]
+def _recent_freq(draws: List[Dict], window:int|None=None)->Counter:
+    items = draws
+    if window is not None and window>0 and len(items)>window:
+        items = items[-window:]
     cnt = Counter()
-    for d in draws:
+    for d in items:
         cnt.update(d["numbers"])
     return cnt
 
@@ -63,9 +62,8 @@ def _metrics(nums: List[int], freq: Dict[int,int]):
     return dict(reward=round(reward,3), risk=round(risk,3), score=round(score,3),
                 rr=round(rr,3), win=round(win,1), rationale=details)
 
-def compute_all(seed:int|None, count:int=5, window:int=10):
-    last = read_last_draw()
-    recent_cnt = _recent_freq(window)
+def compute_all(seed:int|None, draws: List[Dict], count:int=5, window:int=10):
+    recent_cnt = _recent_freq(draws, window)
     weights = {n: (recent_cnt.get(n,0) + 1) for n in range(1,46)}
     rng = random.Random(seed)
 
@@ -89,16 +87,13 @@ def compute_all(seed:int|None, count:int=5, window:int=10):
     best3 = [best_per_strategy[k] for k in ["Balanced","Conservative","High-Risk"]]
     all_korean = {STRAT_KO[k]: all_by_strategy[k] for k in ["Conservative","Balanced","High-Risk"]}
 
-    return dict(last=last, best_key=best_key, best_name_ko=STRAT_KO[best_key],
+    return dict(best_key=best_key, best_name_ko=STRAT_KO[best_key],
                 best_top5=best_top5, best3=best3, all_korean=all_korean)
 
-def range_freq(window:int=10):
-    draws = read_recent()
-    if window>0 and len(draws)>window:
-        draws = draws[-window:]
+def range_freq_from_draws(draws: List[Dict]) -> tuple[dict, list[str], str]:
+    from collections import Counter
     cnt = Counter()
-    for d in draws:
-        cnt.update(d["numbers"])
+    for d in draws: cnt.update(d["numbers"])
     groups = {
         "1-10": list(range(1,11)),
         "11-20": list(range(11,21)),
@@ -106,10 +101,8 @@ def range_freq(window:int=10):
         "31-40": list(range(31,41)),
         "41-45": list(range(41,46)),
     }
-    out = {}
-    for label, nums in groups.items():
-        out[label] = {str(n): int(cnt.get(n,0)) for n in nums}
-    strengths = {label: sum(v.values()) for label,v in out.items()}
+    out = {label: {str(n): int(cnt.get(n,0)) for n in nums} for label, nums in groups.items()}
+    strengths = {label: sum(v.values()) for label, v in out.items()}
     sorted_groups = sorted(strengths.items(), key=lambda x: x[1], reverse=True)
     top2 = [sorted_groups[0][0], sorted_groups[1][0]] if len(sorted_groups)>=2 else [sorted_groups[0][0]]
     bottom = sorted_groups[-1][0]
