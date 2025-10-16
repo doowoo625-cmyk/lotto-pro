@@ -39,3 +39,20 @@ html,body{background:var(--bg); color:var(--text); font-family:var(--font); line
 .weekly-name{font-weight:600;opacity:.9;min-width:72px;}
 .weekly-metrics{display:flex;gap:6px;margin-left:auto;}
 .weekly-pills{display:flex;gap:4px;flex-wrap:wrap;}
+/* ==== v3.4 line list layout ==== */
+.line-row{
+  display:flex; align-items:center; gap:12px;
+  padding:10px 12px; border-bottom:1px dotted #222a33;
+}
+.line-row:last-child{ border-bottom:none; }
+.rank-col{
+  width:38px; min-width:38px; height:34px;
+  display:flex; align-items:center; justify-content:center;
+  background:#0b0f14; border:1px solid #1f2630; border-radius:999px;
+}
+.strategy-col{ min-width:72px; opacity:.9; }
+.flex1{ flex:1; }
+.w70{ width:70px; }
+.w120{ width:120px; }
+.w60{ width:60px; }
+.w70.right, .w60.right, .right{ text-align:right; }
