@@ -1,6 +1,6 @@
 :root{
-  --bg:#0c0f13; --panel:#111418; --line:#1c2128;
-  --muted:#b2becd; --text:#e6edf3;
+  --bg:#101419; --panel:#14181d; --line:#242b35;
+  --muted:#c7d2de; --text:#eef3f8;
   --radius:14px; --pad:12px;
   --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;
 }
@@ -12,7 +12,7 @@ html,body{background:var(--bg); color:var(--text); font-family:var(--font); line
 .h-scroll{display:flex; gap:14px; overflow-x:auto; padding-bottom:2px;}
 .h-card{min-width:320px;}
 .mini-card{background:#0e1116; border:1px dashed #232a33; border-radius:12px; padding:10px 12px; min-width:260px;}
-.mono{font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;}
+.mono{font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; color:#d3d9e2;}
 .small{font-size:.86rem;} .subtle{opacity:.75;}
 .kv .tag{display:inline-block; border:1px solid #2a323c; border-radius:999px; padding:2px 8px; font-size:.85rem; margin-right:6px;}
 
