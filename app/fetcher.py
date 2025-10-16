@@ -5,7 +5,8 @@ from typing import Dict, Any, List
 
 API = "https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo={no}"
 
-_TTL = 300  # 5분 캐시
+# 5분 메모리 캐시 (짧은 타임아웃 + 재시도, 무중단 폴백)
+_TTL = 300
 _cache: dict[str, tuple[float, Any]] = {}
 
 def _get_cache(k: str):
@@ -22,16 +23,17 @@ def _set_cache(k: str, val: Any):
     return val
 
 async def _request_json(url: str, client: httpx.AsyncClient, retries: int = 1, timeout: float = 3.0):
-    last = None
-    for _ in range(retries+1):
+    last_err = None
+    for _ in range(retries + 1):
         try:
             r = await client.get(url, timeout=timeout, headers={"User-Agent":"Mozilla/5.0 LottoFetcher"})
             r.raise_for_status()
             return r.json()
         except Exception as e:
-            last = e
+            last_err = e
             await asyncio.sleep(0.15)
-    raise last
+    # 호출 실패 시 에러를 다시 던지되, 상위에서 캐시/폴백 사용
+    raise last_err
 
 async def fetch_draw(no: int) -> Dict[str, Any]:
     key = f"draw:{no}"
@@ -57,7 +59,7 @@ async def fetch_recent(end_no: int, n: int = 10) -> List[Dict[str, Any]]:
     start = max(1, end_no - n + 1)
     async with httpx.AsyncClient(http2=True) as client:
         datas = await asyncio.gather(*[
-            _request_json(API.format(no=no), client) for no in range(start, end_no+1)
+            _request_json(API.format(no=draw), client) for draw in range(start, end_no + 1)
         ])
     items = []
     for d in datas:
@@ -74,6 +76,7 @@ async def fetch_recent(end_no: int, n: int = 10) -> List[Dict[str, Any]]:
     return _set_cache(key, items)
 
 async def latest_draw_no(probe_start: int = 9999) -> int:
+    # 최신 회차를 상단부터 역탐색해서 첫 성공 회차 반환
     key = "latest_no"
     hit = _get_cache(key)
     if hit: return hit
