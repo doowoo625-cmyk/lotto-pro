@@ -4,13 +4,13 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional
 from .schemas import PredictRequest, PredictResponse, StrategyPick, Draw
 from .logic import compute_all, range_freq_from_draws
 from .storage import read_last_draw, write_last_draw, read_recent, write_recent
 from .fetcher import fetch_draw, fetch_recent, latest_draw_no
 
-app = FastAPI(title="Lotto v3.1-final SWR", version="3.1-SWR")
+app = FastAPI(title="Lotto v3.3-final", version="3.3")
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -19,7 +19,7 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 def index():
     return (STATIC_DIR / "index.html").read_text(encoding="utf-8")
 
-# ---- SWR helpers (항상 즉시 응답, 최신화는 뒤에서) ----
+# --- 백그라운드 최신화(SWR) : 즉시 응답 + 뒤에서 최신화 ---
 async def _refresh_recent(end_no: int, n: int = 10):
     try:
         items = await fetch_recent(end_no, n)
@@ -27,9 +27,10 @@ async def _refresh_recent(end_no: int, n: int = 10):
             write_recent(items)
             write_last_draw(items[-1])
     except Exception:
+        # 조용히 무시(화면은 캐시로 즉시 표시)
         pass
 
-async def _refresh_latest():
+async def _refresh_latest_once():
     try:
         no = await latest_draw_no(9999)
         data = await fetch_draw(no)
@@ -43,12 +44,14 @@ async def _refresh_latest():
 
 @app.on_event("startup")
 async def startup():
-    asyncio.create_task(_refresh_latest())
+    # 서버 부팅 시 한 번 최신화 시도(페이지 접속 때도 각 API가 별도로 최신화 시도)
+    asyncio.create_task(_refresh_latest_once())
 
 @app.get("/api/latest")
 async def api_latest():
-    last = read_last_draw()                 # 1) 즉시 캐시 리턴
-    asyncio.create_task(_refresh_latest())  # 2) 뒤에서 최신화
+    # 페이지 접속 시점마다 최신 확인(즉시 캐시 리턴 + 백그라운드 최신화)
+    last = read_last_draw()
+    asyncio.create_task(_refresh_latest_once())
     return last
 
 @app.get("/api/dhlottery/recent")
@@ -60,6 +63,7 @@ async def api_recent(end_no: Optional[int] = None, n: int = 10):
         view = [x for x in items if x["draw_no"] <= end_no][-n:]
     else:
         view = items[-n:]
+    # 페이지 접속 시에만 최신화 시도
     if end_no:
         asyncio.create_task(_refresh_recent(end_no, n))
     else:
