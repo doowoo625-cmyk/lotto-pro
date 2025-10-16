@@ -8,7 +8,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 RECENT_PATH = DATA_DIR / "recent.json"
 LAST_PATH = DATA_DIR / "last.json"
 
-# 즉시 응답용 기본 스냅샷(없으면 이걸로 화면을 채움; 원하면 네 최신 10회로 바꿔두면 됨)
+# 즉시 응답용 스냅샷(없어도 화면이 비지 않도록 최소 데이터 제공)
 DEFAULT_RECENT: List[Dict[str, Any]] = [
     {"draw_no": 1184, "numbers":[2,5,12,19,28,41], "bonus":8,  "date":"2024-08-10"},
     {"draw_no": 1185, "numbers":[1,3,9,15,34,45],  "bonus":23, "date":"2024-08-17"},
