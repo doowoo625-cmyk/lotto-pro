@@ -14,7 +14,7 @@ const pill = (n)=> `<span class="pill ${lottoColor(n)}">${String(n).padStart(2,'
 
 let LATEST_DRAW_NO = null;
 
-// 1) 상단 직전 회차 (자동 최신)
+// 1) 상단 직전 회차 (페이지 접속 시 자동 최신)
 async function refreshTop(){
   const last = await getJSON('/api/latest');
   LATEST_DRAW_NO = last.draw_no;
@@ -36,7 +36,7 @@ async function refreshTop(){
   }
 }
 
-// 2) 최근 10회 (자동: 직전10 오름차순 / 수동 조회도 오름차순)
+// 2) 최근 10회 (자동: 직전10 오름차순 / 조회도 오름차순)
 async function renderRecent(end_no, n=10){
   const data = await getJSON(`/api/dhlottery/recent?end_no=${end_no}&n=${n}`);
   const items = (data.items||[]).sort((a,b)=> a.draw_no - b.draw_no);
@@ -95,7 +95,7 @@ function renderBestHorizontal(strategyNameKo, rows){
   root.appendChild(wrap);
 }
 
-// 5) 이번 주 추천 전략 (3개, 점수 높은 순, 가로 배치)
+// 5) 이번 주 추천 전략 (3개, 점수 높은 순, 가로 카드. 카드 내부 가로 정렬)
 function renderWeeklyHorizontal(best3){
   const root=document.getElementById('weeklyBlock'); if(!root) return; root.innerHTML='';
   const sorted=[...best3].sort((a,b)=>(b.score??0)-(a.score??0));
@@ -146,8 +146,9 @@ function bind(){
 }
 async function init(){
   bind();
-  await refreshTop();          // 1) 직전 회차
-  renderRecent(LATEST_DRAW_NO, 10); // 2) 최근 10(오름차순)
-  renderRange(LATEST_DRAW_NO, 10);  // 3) 구간 빈도(10, 상위2/하위1 강조)
+  // 페이지 접속 시점마다 자동 최신화(주기 없는 1회 갱신)
+  await refreshTop();
+  await autoRecent10();
+  await autoRange10();
 }
 init();
