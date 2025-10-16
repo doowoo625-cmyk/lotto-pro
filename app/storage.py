@@ -1,4 +1,3 @@
-# app/storage.py
 from __future__ import annotations
 from pathlib import Path
 import json
@@ -9,10 +8,8 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 RECENT_PATH = DATA_DIR / "recent.json"
 LAST_PATH = DATA_DIR / "last.json"
 
-# ✅ 즉시 응답용 내장 스냅샷(형식 고정)
-#   필요 시 최근 데이터로 교체해도 되고, 없으면 이 값으로 즉시 화면 채움
+# 즉시 응답용 기본 스냅샷(없으면 이걸로 화면을 채움; 원하면 네 최신 10회로 바꿔두면 됨)
 DEFAULT_RECENT: List[Dict[str, Any]] = [
-    # 예시 포맷(오름차순 정렬 기준): draw_no, numbers(정렬), bonus, date
     {"draw_no": 1184, "numbers":[2,5,12,19,28,41], "bonus":8,  "date":"2024-08-10"},
     {"draw_no": 1185, "numbers":[1,3,9,15,34,45],  "bonus":23, "date":"2024-08-17"},
     {"draw_no": 1186, "numbers":[4,6,7,21,36,39],  "bonus":12, "date":"2024-08-24"},
@@ -34,9 +31,7 @@ def _safe_read(path: Path, default):
     return default
 
 def read_recent() -> List[Dict[str, Any]]:
-    # 항상 즉시 결과 반환(파일 없거나 파싱 실패해도 DEFAULT로)
     data = _safe_read(RECENT_PATH, DEFAULT_RECENT)
-    # 보정: 정렬·필드 타입 통일
     data = sorted(data, key=lambda x: int(x.get("draw_no", 0)))
     for it in data:
         it["numbers"] = sorted([int(n) for n in it.get("numbers", [])])
@@ -51,7 +46,6 @@ def write_recent(items: List[Dict[str, Any]]):
         pass
 
 def read_last_draw() -> Dict[str, Any]:
-    # 최근 목록의 마지막을 곧바로 반환(없으면 DEFAULT 마지막)
     items = read_recent()
     return items[-1] if items else DEFAULT_RECENT[-1]
 
