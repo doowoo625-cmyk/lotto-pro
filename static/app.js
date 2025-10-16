@@ -92,30 +92,33 @@ function renderWeeklyHorizontal(best3){
   // 점수 높은 순으로 정렬 (1위→2위→3위 가로)
   const sorted = [...best3].sort((a,b)=> (b.score ?? 0) - (a.score ?? 0));
 
-  const wrap = document.createElement('div');
-  wrap.className='h-scroll row-gap';
+   // 세로로 쌓기
+  const stack = document.createElement('div');
+  stack.className = 'weekly-stack';
 
   sorted.forEach((it, idx)=>{
     const name = it.name_ko || it.name || '전략';
+
+    // 카드 1개 = 한 줄 가로 정렬(랭크 뱃지 / 전략명 / 번호 / 지표)
     const card = document.createElement('div');
-    card.className='card h-card';
-    card.innerHTML = `
+    card.className = 'card weekly-row';
+
+ card.innerHTML = `
       <div class="mono rank-badge">${idx+1}</div>
-      <div class="small" style="opacity:.85">${name}</div>
-      <div class="pills" style="margin:6px 0 8px">${it.numbers.map(pill).join("")}</div>
-      <div class="kv">
+      <div class="weekly-name">${name}</div>
+      <div class="pills weekly-pills">${it.numbers.map(pill).join("")}</div>
+      <div class="kv weekly-metrics">
         <span class="tag">Score ${it.score}</span>
         <span class="tag">R/R ${it.rr}</span>
         <span class="tag">승률 ${it.win}%</span>
       </div>
-      <div class="small" style="margin-top:8px">
-        근거: <b>번호 / 빈도 / 확률(%) / 기준</b> — ${it.rationale||''}
-      </div>`;
-    wrap.appendChild(card);
-  });
-  root.appendChild(wrap);
-}
+    `;
 
+    stack.appendChild(card);
+  });
+
+  root.appendChild(stack);
+}
 // ===== 전략별 추천 (각 5세트, 내부 오름정렬, 그룹 가로 스크롤) =====
 function renderByStrategyHorizontal(all){
   const order = ['보수형','균형형','고위험형'];
