@@ -1,4 +1,3 @@
-# app/fetcher.py
 from __future__ import annotations
 import asyncio, time
 import httpx
@@ -6,7 +5,7 @@ from typing import Dict, Any, List
 
 API = "https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo={no}"
 
-_TTL = 300  # 5분
+_TTL = 300  # 5분 캐시
 _cache: dict[str, tuple[float, Any]] = {}
 
 def _get_cache(k: str):
