@@ -97,3 +97,20 @@
 
 /* 상단 상태 라인 */
 #statusRight { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+
+/* 이번 주 추천 전략: 세로 스택 + 내부 가로 정렬 */
+.weekly-stack { display: flex; flex-direction: column; gap: 12px; }
+.weekly-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; min-height: 64px; }
+
+/* 전략명 가독성 */
+.weekly-name { font-weight: 600; opacity: .9; min-width: 72px; }
+
+/* 번호(공) 줄바꿈 최소화 & 간격 */
+.weekly-pills { display: flex; gap: 4px; flex-wrap: wrap; }
+
+/* 지표(Score/RR/승률) 한 줄 정렬 */
+.weekly-metrics { display: flex; gap: 6px; margin-left: auto; }
+
+/* 기존 배지/태그/공 스타일과 조화 */
+.rank-badge { background:#0b0f14; border:1px solid #1f2630; border-radius:999px; width:34px; height:34px; display:flex; align-items:center; justify-content:center; }
+.pills .pill { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:999px; font-variant-numeric: tabular-nums; margin:1px 3px; }
