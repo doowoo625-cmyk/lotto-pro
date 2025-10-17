@@ -4,12 +4,28 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Lotto v3.1-final (Clean)</title>
+  
+  <!-- 외부 원격 스크립트 차단(자체 파일만 허용) -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self';"/>
+
+  <!-- 파비콘 404 방지: data URI 사용 -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Crect width='64' height='64' fill='%23101419'/%3E%3Ctext x='32' y='42' text-anchor='middle' font-size='36' fill='%23a78bfa'%3EL%3C/text%3E%3C/svg%3E"/>
 
   <!-- 기본 스타일 -->
   <link rel="icon" href="/static/favicon.ico" />
   <!-- ✅ 밝기/가독성 개선 톤 추가 (버전 쿼리로 캐시 방지) -->
   <link rel="stylesheet" href="/static/styles.css"/>
   <link rel="stylesheet" href="/static/styles.tone.css?v=2"/>
+  
+    <!-- 주입 에러 무시(확장 스크립트로 인한 실행 중단 방지) -->
+  <script>
+    window.addEventListener('error', function(e){
+      var msg = String(e.message || '');
+      if (msg.indexOf('Cannot redefine property: ethereum') > -1) {
+        e.preventDefault(); return false;
+      }
+    }, true);
+  </script>
 </head>
 <body>
   <div class="container">
