@@ -255,3 +255,12 @@ async def on_startup():
     except Exception:
         # 배포 첫 부팅에서 실패해도 앱은 살아 있어야 한다.
         pass
+
+from fastapi.responses import HTMLResponse
+
+@app.get("/", response_class=HTMLResponse)
+async def index():
+    html_path = STATIC_DIR / "index.html"
+    if not html_path.exists():
+        return HTMLResponse("<h1>index.html not found</h1>", status_code=404)
+    return html_path.read_text(encoding="utf-8")
