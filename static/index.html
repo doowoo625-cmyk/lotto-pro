@@ -13,15 +13,15 @@
   <link rel="stylesheet" href="/static/styles.tone.css?v=4"/>
 
   <!-- 브라우저 확장 주입 오류(ethereum 재정의) 무시 가드 -->
-  <script>
-    window.addEventListener('error', function(e){
-      const msg = String(e && e.message || '');
-      if (msg.includes('Cannot redefine property: ethereum')) {
-        e.preventDefault(); return false;
-      }
-    }, true);
-    window.__appBooted = false; // app.js가 로드되면 true로 바뀜
+ <script>
+  window.addEventListener('error', function(e){
+    const msg = String(e && e.message || '');
+    if (msg.includes('Cannot redefine property: ethereum')) {
+      e.preventDefault(); return false;
+    }
+  }, true);
   </script>
+
 </head>
 <body>
   <div class="container">
