@@ -1,8 +1,16 @@
 # ==== (기존 app/main.py 상단/중간은 그대로 두고, 맨 아래 API들 아래에 이 블록을 추가) ====
 
-from itertools import combinations
-import math
-import random
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+from typing import List, Dict, Tuple  # ✅ 이 줄 추가
+import httpx
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
+
 
 def build_freq(items: List[dict]) -> Dict[int, int]:
     freq = {i: 0 for i in range(1, 46)}
