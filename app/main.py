@@ -1,18 +1,18 @@
-# app/main.py  (Render 배포용 단일 파일 구현 v4)
+# app/main.py  (v5 - Render drop-in)
 from __future__ import annotations
 
 import json
-import os
+import math
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import httpx
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 # -------------------------
-# 기본 경로/정적 파일 마운트
+# 경로/정적
 # -------------------------
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
@@ -20,26 +20,23 @@ DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 CACHE_PATH = DATA_DIR / "recent.json"
 
-app = FastAPI(title="Lotto Predictor API (v4)")
+app = FastAPI(title="Lotto Predictor API (v5)")
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-
 # -------------------------
-# 동행복권 JSON API
+# 외부 API (동행복권)
 # -------------------------
 DH_BASE = "https://www.dhlottery.co.kr/common.do"
 TIMEOUT = httpx.Timeout(8.0, connect=5.0, read=5.0)
-HEADERS = {"User-Agent": "lotto-predictor/4.0 (+render)"}  # 보수적 UA
+HEADERS = {"User-Agent": "lotto-predictor/5.0 (+render)"}
 
 async def fetch_draw(drw_no: int) -> Optional[dict]:
-    """특정 회차 1건 조회 (성공 시 표준화 dict 반환, 실패/미등록 시 None)"""
     params = {"method": "getLottoNumber", "drwNo": str(drw_no)}
     async with httpx.AsyncClient(timeout=TIMEOUT, headers=HEADERS) as client:
         r = await client.get(DH_BASE, params=params)
     if r.status_code != 200:
         return None
     data = r.json()
-    # 동행복권 성공 시 returnValue == "success"
     if not data or str(data.get("returnValue", "")).lower() != "success":
         return None
     nums = [data.get(f"drwtNo{i}") for i in range(1, 7)]
@@ -47,17 +44,11 @@ async def fetch_draw(drw_no: int) -> Optional[dict]:
         return None
     nums = sorted(int(n) for n in nums)
     bn = int(data.get("bnusNo", 0))
-    date = data.get("drwNoDate")  # "YYYY-MM-DD"
-    return {
-        "draw_no": int(data.get("drwNo")),
-        "numbers": nums,
-        "bonus": bn,
-        "date": date,
-    }
-
+    date = data.get("drwNoDate")
+    return {"draw_no": int(data.get("drwNo")), "numbers": nums, "bonus": bn, "date": date}
 
 # -------------------------
-# 캐시 I/O
+# 캐시
 # -------------------------
 def read_cache() -> Dict[str, dict]:
     if CACHE_PATH.exists():
@@ -75,21 +66,13 @@ def max_cached_draw(cache: Dict[str, dict]) -> int:
         return 0
     return max(int(k) for k in cache.keys())
 
-
 # -------------------------
-# 최신 회차 빠른 탐색
-#   - 지수 증가 → 경계 찾기 → 이분 탐색
-#   - 캐시가 있으면 그 다음부터 확인
+# 최신 회차 찾기
 # -------------------------
 async def find_latest_draw_no(cache: Dict[str, dict]) -> int:
     last = max_cached_draw(cache)
-    if last <= 0:
-        # 합리적 시작점 (1000회 이후는 안정적), 없으면 512부터
-        probe = 1024
-    else:
-        probe = last + 1
+    probe = last + 1 if last > 0 else 1024
 
-    # 1) 상한 찾기 (성공하는 한 2배씩 증가)
     lo_success = 0
     hi_fail = 0
     step = probe
@@ -99,14 +82,13 @@ async def find_latest_draw_no(cache: Dict[str, dict]) -> int:
             cache[str(ok["draw_no"])] = ok
             lo_success = step
             step *= 2
-            if step > 8192:  # 안전 상한
+            if step > 8192:
                 break
         else:
             hi_fail = step
             break
 
     if lo_success == 0 and hi_fail == 0:
-        # 첫 시도부터 실패한 경우: 1부터 상승
         step = 1
         while True:
             ok = await fetch_draw(step)
@@ -118,7 +100,6 @@ async def find_latest_draw_no(cache: Dict[str, dict]) -> int:
                 hi_fail = step
                 break
 
-    # 2) 이분 탐색으로 마지막 성공 지점 찾기
     if lo_success and hi_fail and hi_fail - lo_success > 1:
         lo, hi = lo_success, hi_fail
         while lo + 1 < hi:
@@ -131,26 +112,20 @@ async def find_latest_draw_no(cache: Dict[str, dict]) -> int:
                 hi = mid
         latest = lo
     else:
-        # 경계가 바로 이웃하거나 상한 도달
         latest = lo_success
-
     return latest
 
-
 # -------------------------
-# 최근 N회 수집/반환
+# 최근 N 확보
 # -------------------------
 async def ensure_recent(cache: Dict[str, dict], end_no: int, n: int) -> List[dict]:
-    """end_no부터 과거로 n개 확보 (캐시 보강) → 오름차순 정렬하여 반환"""
     items: List[dict] = []
     need_range = range(max(1, end_no - n + 1), end_no + 1)
-    # 캐시에서 먼저 추출
     for d in need_range:
         k = str(d)
         if k in cache:
             items.append(cache[k])
 
-    # 부족분만 원격 조회
     have_set = set(int(x["draw_no"]) for x in items)
     for d in need_range:
         if d in have_set:
@@ -160,13 +135,11 @@ async def ensure_recent(cache: Dict[str, dict], end_no: int, n: int) -> List[dic
             cache[str(d)] = ok
             items.append(ok)
 
-    # 정렬 (오름차순)
     items.sort(key=lambda x: x["draw_no"])
     return items
 
-
 # -------------------------
-# 범위별 빈도
+# 구간 빈도
 # -------------------------
 def range_buckets() -> List[Tuple[str, range]]:
     return [
@@ -187,62 +160,197 @@ def compute_range_freq(items: List[dict]) -> dict:
                     break
     return {"per": per}
 
+# -------------------------
+# 점수/전략 생성 (간단/견고)
+# -------------------------
+def freq_table(items: List[dict]) -> Dict[int, int]:
+    ft = {n: 0 for n in range(1, 46)}
+    for it in items:
+        for n in it["numbers"]:
+            ft[n] += 1
+    return ft
+
+def combo_score(nums: List[int], ft: Dict[int, int]) -> Tuple[float, float, float]:
+    """(score, rr, win%) 계산: reward=평균빈도, risk=분산+인접패널티"""
+    reward = sum(ft[n] for n in nums) / 6.0
+    # 분산
+    mean = sum(nums) / 6.0
+    var = sum((n - mean) ** 2 for n in nums) / 6.0
+    # 인접 패널티
+    adj = 0
+    for i in range(5):
+        if nums[i + 1] - nums[i] == 1:
+            adj += 1
+    risk = (var / 100.0) + (adj * 0.5)  # 스케일 조정
+    score = reward / (1.0 + risk)
+    # R/R은 간단히 reward / (1 + adj)
+    rr = round(reward / (1.0 + adj), 2)
+    # 승률 추정: 보정된 sigmoid
+    win = round(100 / (1 + math.exp(-(reward - 3.0))), 1)
+    return round(score, 2), rr, win
+
+def gen_candidate_sets(ft: Dict[int, int], mode: str) -> List[List[int]]:
+    """mode: '보수형'|'균형형'|'고위험형' 에 따라 후보 조합 생성"""
+    # 빈도 순 정렬
+    top = sorted(range(1, 46), key=lambda x: ft[x], reverse=True)
+    mid = sorted(range(1, 46), key=lambda x: abs(ft[x] - (sum(ft.values())/45)))
+    low = sorted(range(1, 46), key=lambda x: ft[x])
+
+    picks: List[List[int]] = []
+    if mode == "보수형":
+        # 상위 빈도에서 간격 넓게 추출
+        pool = top[:20]
+        bases = [
+            [pool[i] for i in [0,3,6,9,12,15]],
+            [pool[i] for i in [1,4,7,10,13,16]],
+            [pool[i] for i in [2,5,8,11,14,17]],
+            [pool[i] for i in [0,5,6,11,12,17]],
+            [pool[i] for i in [3,4,9,10,15,16]],
+        ]
+        picks = [sorted(b) for b in bases]
+    elif mode == "균형형":
+        # 상/중/하 빈도 골고루
+        pool_h = top[:15]
+        pool_m = mid[:15]
+        pool_l = low[:15]
+        bases = [
+            [pool_h[0], pool_h[5], pool_m[2], pool_m[7], pool_l[1], pool_l[6]],
+            [pool_h[1], pool_h[6], pool_m[3], pool_m[8], pool_l[2], pool_l[7]],
+            [pool_h[2], pool_h[7], pool_m[4], pool_m[9], pool_l[3], pool_l[8]],
+            [pool_h[3], pool_h[8], pool_m[5], pool_m[10], pool_l[4], pool_l[9]],
+            [pool_h[4], pool_h[9], pool_m[6], pool_m[11], pool_l[5], pool_l[10]],
+        ]
+        picks = [sorted(b) for b in bases]
+    else:  # 고위험형
+        # 낮은 빈도 + 간격 좁힘(변동성↑)
+        pool = low[:25]
+        bases = [
+            [pool[i] for i in [0,1,2,7,12,18]],
+            [pool[i] for i in [1,2,3,8,13,19]],
+            [pool[i] for i in [2,3,4,9,14,20]],
+            [pool[i] for i in [3,4,5,10,15,21]],
+            [pool[i] for i in [4,5,6,11,16,22]],
+        ]
+        picks = [sorted(b) for b in bases]
+    # 1~45 범위 보정
+    normed = []
+    for s in picks:
+        ss = [min(45, max(1, int(x))) for x in s]
+        # 정렬·중복 제거 보정
+        uniq = sorted(dict.fromkeys(ss))
+        while len(uniq) < 6:
+            # 부족하면 높은쪽에서 채우기
+            for k in range(45, 0, -1):
+                if k not in uniq:
+                    uniq.append(k)
+                    break
+            uniq = sorted(uniq)
+        normed.append(uniq[:6])
+    return normed
+
+def build_strategy_payload(items: List[dict]) -> dict:
+    ft = freq_table(items)
+    out: Dict[str, List[dict]] = {}
+    for mode in ["보수형", "균형형", "고위험형"]:
+        cands = gen_candidate_sets(ft, mode)
+        scored: List[dict] = []
+        for s in cands:
+            score, rr, win = combo_score(s, ft)
+            scored.append({"numbers": s, "score": score, "rr": rr, "win": win, "name": mode, "name_ko": mode})
+        # 점수 내림차순
+        scored.sort(key=lambda x: x["score"], reverse=True)
+        out[mode] = scored[:5]
+    # 전체 풀에서 상위 3 추출(각 전략 1세트씩 대표)
+    best3 = [out["균형형"][0], out["보수형"][0], out["고위험형"][0]]
+    best3.sort(key=lambda x: x["score"], reverse=True)
+    return {
+        "all_by_strategy_korean": out,
+        "best3_by_priority_korean": best3,
+    }
 
 # =========================
-#          API
+#           API
 # =========================
 @app.get("/api/latest")
 async def api_latest():
-    """
-    최신 회차 1건.
-    - 캐시에 없거나 draw_no==0이면 원격 탐색으로 최신을 보장.
-    """
     cache = read_cache()
-
-    # 캐시가 더미인 경우 보강
     latest = max_cached_draw(cache)
     if latest <= 0:
         latest = await find_latest_draw_no(cache)
         write_cache(cache)
-
-    # 최신이더라도, 더 새로운 회차가 열렸을 수 있으니 한 번 더 체크
     newest = await find_latest_draw_no(cache)
     if newest != latest:
         latest = newest
         write_cache(cache)
-
     item = cache.get(str(latest))
     if not item:
         raise HTTPException(500, "latest not found after refresh")
-
     return JSONResponse(item)
-
 
 @app.get("/api/dhlottery/recent")
 async def api_recent(end_no: int = Query(..., gt=0), n: int = Query(10, gt=0, le=200)):
-    """
-    end_no 기준 이전 n개(포함) → 오름차순 배열
-    """
     cache = read_cache()
     items = await ensure_recent(cache, end_no, n)
     write_cache(cache)
     return JSONResponse({"items": items})
 
-
 @app.get("/api/range_freq_by_end")
 async def api_range_freq_by_end(end_no: int = Query(..., gt=0), n: int = Query(10, gt=0, le=200)):
-    """
-    end_no 기준 이전 n개(포함)의 번호 빈도 → 5구간(1-10, …, 41-45)
-    """
     cache = read_cache()
     items = await ensure_recent(cache, end_no, n)
     write_cache(cache)
     per = compute_range_freq(items)
     return JSONResponse(per)
 
+@app.post("/api/predict")
+async def api_predict(
+    end_no: Optional[int] = None,
+    n: int = Query(30, gt=5, le=200)  # 최근 30회 기반으로 스코어링(가벼움+안정)
+):
+    """
+    예측 API:
+    - 기본은 최신 회차 기준 최근 n회로 빈도/점수 계산
+    - 응답 구조는 프론트(app.js) 기대값에 맞춤
+    """
+    cache = read_cache()
+    latest = max_cached_draw(cache)
+    if latest <= 0:
+        latest = await find_latest_draw_no(cache)
+    use_end = end_no or latest
+    items = await ensure_recent(cache, use_end, n)
+    write_cache(cache)
+
+    if not items:
+        raise HTTPException(500, "no recent items available")
+
+    payload = build_strategy_payload(items)
+
+    # 전체 후보에서 스코어 상위 5 (전략 섞임)
+    pool = []
+    for arr in payload["all_by_strategy_korean"].values():
+        pool.extend(arr)
+    pool.sort(key=lambda x: x["score"], reverse=True)
+    top5 = pool[:5]
+
+    # 최종 응답
+    return JSONResponse({
+        "all_by_strategy_korean": payload["all_by_strategy_korean"],
+        "best3_by_priority_korean": payload["best3_by_priority_korean"],
+        "best_strategy_top5": top5
+    })
 
 # -------------------------
-# 기동 시 1회 캐시웜업 (비차단)
+# index.html 서빙
+# -------------------------
+@app.get("/", response_class=HTMLResponse)
+async def index():
+    html_path = STATIC_DIR / "index.html"
+    if not html_path.exists():
+        return HTMLResponse("<h1>index.html not found</h1>", status_code=404)
+    return html_path.read_text(encoding="utf-8")
+
+# -------------------------
+# 기동시 웜업 (non-blocking)
 # -------------------------
 @app.on_event("startup")
 async def on_startup():
@@ -253,14 +361,4 @@ async def on_startup():
             if latest > 0:
                 write_cache(cache)
     except Exception:
-        # 배포 첫 부팅에서 실패해도 앱은 살아 있어야 한다.
         pass
-
-from fastapi.responses import HTMLResponse
-
-@app.get("/", response_class=HTMLResponse)
-async def index():
-    html_path = STATIC_DIR / "index.html"
-    if not html_path.exists():
-        return HTMLResponse("<h1>index.html not found</h1>", status_code=404)
-    return html_path.read_text(encoding="utf-8")
