@@ -10,7 +10,7 @@ function lottoColor(n){
   if (n>=1 && n<=10) return "yellow";
   if (n<=20) return "blue";
   if (n<=30) return "red";
-  if (n<=40) return "gray";
+  if (n<=40) return "purple";
   return "green";
 }
 const pill = (n)=> `<span class="pill ${lottoColor(n)}">${String(n).padStart(2,'0')}</span>`;
