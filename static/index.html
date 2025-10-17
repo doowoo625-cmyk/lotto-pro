@@ -4,32 +4,27 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Lotto v3.1-final (Clean)</title>
-  
-  <!-- 외부 원격 스크립트 차단(자체 파일만 허용) -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self';"/>
 
-  <!-- 파비콘 404 방지: data URI 사용 -->
+  <!-- 파비콘: 404 제거용 (data URI) -->
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Crect width='64' height='64' fill='%23101419'/%3E%3Ctext x='32' y='42' text-anchor='middle' font-size='36' fill='%23a78bfa'%3EL%3C/text%3E%3C/svg%3E"/>
 
-  <!-- 기본 스타일 -->
-  <link rel="icon" href="/static/favicon.ico" />
-  <!-- ✅ 밝기/가독성 개선 톤 추가 (버전 쿼리로 캐시 방지) -->
+  <!-- 기본/톤 CSS (캐시 무효화) -->
   <link rel="stylesheet" href="/static/styles.css"/>
-  <link rel="stylesheet" href="/static/styles.tone.css?v=2"/>
-  
-    <!-- 주입 에러 무시(확장 스크립트로 인한 실행 중단 방지) -->
+  <link rel="stylesheet" href="/static/styles.tone.css?v=4"/>
+
+  <!-- 브라우저 확장 주입 오류(ethereum 재정의) 무시 가드 -->
   <script>
     window.addEventListener('error', function(e){
-      var msg = String(e.message || '');
-      if (msg.indexOf('Cannot redefine property: ethereum') > -1) {
+      const msg = String(e && e.message || '');
+      if (msg.includes('Cannot redefine property: ethereum')) {
         e.preventDefault(); return false;
       }
     }, true);
+    window.__appBooted = false; // app.js가 로드되면 true로 바뀜
   </script>
 </head>
 <body>
   <div class="container">
-  
     <header>
       <h1>로또 예측 시스템 <span class="badge">v3.1-final</span></h1>
       <div class="status">
@@ -89,7 +84,19 @@
     </section>
   </div>
 
-  <!-- ✅ JS 캐시 깨기 (버전 쿼리 추가) -->
-<script src="/static/app.js?v=2"></script>
+  <!-- app.js 로딩 (캐시 무효화 + 실패 감지) -->
+  <script defer src="/static/app.js?v=4" onload="window.__appBooted=true" onerror="document.getElementById('apiStatus').textContent='스크립트 로드 실패(404)';"></script>
+
+  <!-- 폴백 경고: app.js가 못 뜨면 안내 메시지 표출 -->
+  <script>
+    window.addEventListener('DOMContentLoaded', function(){
+      setTimeout(function(){
+        if (!window.__appBooted) {
+          const s = document.getElementById('apiStatus');
+          if (s) s.textContent = '스크립트 로드 실패(404). static/app.js 존재/경로 확인';
+        }
+      }, 300);
+    });
+  </script>
 </body>
 </html>
