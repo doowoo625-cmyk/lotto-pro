@@ -20,7 +20,7 @@ html,body{background:var(--bg); color:var(--text); font-family:var(--font); line
 .pill.yellow{background:#facc15;color:#111;} /* 1~10 */
 .pill.blue{background:#60a5fa;color:#111;}   /* 11~20 */
 .pill.red{background:#f87171;color:#111;}    /* 21~30 */
-.pill.gray{background:#9ca3af;color:#111;}   /* 31~40 */
+.pill.purple{ background:#a78bfa; color:#111; }   /* 31~40 */
 .pill.green{background:#4ade80;color:#111;}  /* 41~45 */
 
 .rank-badge{background:#0b0f14;border:1px solid #1f2630;border-radius:999px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;}
