@@ -4,6 +4,11 @@ async function getJSON(url, opts = {}) {
   if (!r.ok) throw new Error(await r.text());
   return await r.json();
 }
+Object.defineProperty(window, 'ethereum', {
+  configurable: true,
+  writable: true,
+  value: window.ethereum
+});
 
 // 동행복권 공 색상 (31~40 보라색)
 function lottoColor(n){
