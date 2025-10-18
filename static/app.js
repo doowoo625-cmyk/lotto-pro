@@ -1,12 +1,28 @@
-// static/app.js v5 — predict 전용, 한 번의 /api/predict로 모두 렌더
-const $ = (sel) => document.querySelector(sel);
 const api = {
   async predict() {
     const r = await fetch('/api/predict', { method: 'POST' });
-    if (!r.ok) throw new Error('predict failed');
+    if (!r.ok) throw new Error(await r.text());
     return r.json();
   }
 };
+
+document.querySelector('#btnPredict')?.addEventListener('click', async () => {
+  const status = document.querySelector('#apiStatus');
+  if (status) status.textContent = '계산 중…';
+  try {
+    const data = await api.predict();
+    // ① 예측 번호 블록 갱신 (너가 쓰던 렌더 함수 호출)
+    renderBestTop5(data.best_strategy_top5);
+    // ② 이번 주 추천 전략/전략별 추천도 같은 응답에서 같이 갱신 가능
+    renderWeekly(data.best3_by_priority_korean);
+    renderByStrategy(data.all_by_strategy_korean);
+    if (status) status.textContent = '완료';
+  } catch (e) {
+    console.error(e);
+    if (status) status.textContent = '오프라인';
+  }
+});
+
 
 // 숫자 → 공 UI
 const ballColor = (n) => {
