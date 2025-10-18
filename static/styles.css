@@ -1,58 +1,38 @@
-:root{
-  --bg:#101419; --panel:#14181d; --line:#242b35;
-  --muted:#c7d2de; --text:#eef3f8;
-  --radius:14px; --pad:12px;
-  --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;
-}
-html,body{background:var(--bg); color:var(--text); font-family:var(--font); line-height:1.45; letter-spacing:.1px;}
-.card{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:var(--pad);}
-.row{display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px dotted #222a33;}
-.header-row{color:var(--muted); border-bottom:1px solid #26303a;}
+:root { --bg:#0b0f14; --card:#111823; --text:#e8edf3; --muted:#94a3b8; --line:#1f2937; }
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:14px/1.6 Pretendard,system-ui,Apple SD Gothic Neo,Segoe UI,Roboto,Apple Color Emoji,Segoe UI Emoji,sans-serif;}
+.container{max-width:1100px;margin:24px auto;padding:0 16px}
+h1{font-size:20px;margin:0 0 8px} .badge{background:#334155;color:#e2e8f0;padding:2px 8px;border-radius:8px;font-size:12px;margin-left:6px}
+h2{font-size:16px;margin:18px 0 10px}
+.row{display:flex;gap:12px;align-items:center} .between{justify-content:space-between}
+.header .status{display:flex;gap:18px;color:var(--muted)}
+.controls{display:flex;gap:10px;align-items:center}
+button{background:#2563eb;border:0;color:white;padding:8px 12px;border-radius:10px;cursor:pointer}
+button:hover{filter:brightness(1.05)}
+.small{font-size:12px}.subtle{color:var(--muted)}
 
-.h-scroll{display:flex; gap:14px; overflow-x:auto; padding-bottom:2px;}
-.h-card{min-width:320px;}
-.mini-card{background:#0e1116; border:1px dashed #232a33; border-radius:12px; padding:10px 12px; min-width:260px;}
-.mono{font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; color:#d3d9e2;}
-.small{font-size:.86rem;} .subtle{opacity:.75;}
-.kv .tag{display:inline-block; border:1px solid #2a323c; border-radius:999px; padding:2px 8px; font-size:.85rem; margin-right:6px;}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px;margin-top:8px}
+.table-head .head{color:#b6c3d1;font-weight:600;border-bottom:1px dashed var(--line);padding-bottom:8px;margin-bottom:4px}
+.list .item{padding:8px 0;border-bottom:1px dashed var(--line)}
+.list .item:last-child{border-bottom:0}
 
-.pills .pill{display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:999px; font-variant-numeric: tabular-nums; margin:1px 3px;}
-.pill.yellow{background:#facc15;color:#111;} /* 1~10 */
-.pill.blue{background:#60a5fa;color:#111;}   /* 11~20 */
-.pill.red{background:#f87171;color:#111;}    /* 21~30 */
-.pill.purple{ background:#a78bfa; color:#111; }   /* 31~40 */
-.pill.green{background:#4ade80;color:#111;}  /* 41~45 */
+.col-rank{width:44px;min-width:44px}
+.col-combo{flex:1}
+.col-meta{width:90px;text-align:center}
+.col-metrics{width:230px;text-align:right}
+.tag{display:inline-flex;align-items:center;gap:6px;background:#0f172a;border:1px solid #23314a;padding:4px 8px;border-radius:999px}
+.tag.big{font-weight:600}
+.mono{font-variant-numeric:tabular-nums}
 
-.rank-badge{background:#0b0f14;border:1px solid #1f2630;border-radius:999px;width:34px;height:34px;display:flex;align-items:center;justify-content:center;}
-.rank-dot{background:#161b22;border-radius:8px;padding:2px 6px;display:inline-block;margin-bottom:6px;}
-.right60{width:60px;text-align:right;} .right70{width:70px;text-align:right;}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.stack{display:grid;grid-template-columns:1fr;gap:12px}
 
-.range-card{background:#0e1116;border:1px solid #1c222b;border-radius:12px;padding:10px 12px;min-width:240px;}
-.range-title{font-weight:600;margin-bottom:8px;}
-.range-grid{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;}
-.range-row{display:contents;}
-.freq{text-align:right;}
-.hi-top{background:linear-gradient(180deg, rgba(250,204,21,.18), rgba(250,204,21,.08)); border-radius:8px; padding:0 4px;}
-.hi-low{background:linear-gradient(180deg, rgba(148,163,184,.18), rgba(148,163,184,.08)); border-radius:8px; padding:0 4px;}
+.balls{display:flex;gap:6px;flex-wrap:wrap}
+.ball{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:999px;font-weight:700;border:1px solid rgba(255,255,255,.08)}
+.ball-yellow{background:#facc15;color:#1f2937}
+.ball-blue{background:#60a5fa;color:#0b1220}
+.ball-red{background:#f87171;color:#230b0b}
+.ball-purple{background:#a78bfa;color:#0e0a1f} /* 31~40 보라 */
+.ball-green{background:#34d399;color:#062012}  /* 41~45 초록 */
 
-#statusRight{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
-.weekly-name{font-weight:600;opacity:.9;min-width:72px;}
-.weekly-metrics{display:flex;gap:6px;margin-left:auto;}
-.weekly-pills{display:flex;gap:4px;flex-wrap:wrap;}
-/* ==== v3.4 line list layout ==== */
-.line-row{
-  display:flex; align-items:center; gap:12px;
-  padding:10px 12px; border-bottom:1px dotted #222a33;
-}
-.line-row:last-child{ border-bottom:none; }
-.rank-col{
-  width:38px; min-width:38px; height:34px;
-  display:flex; align-items:center; justify-content:center;
-  background:#0b0f14; border:1px solid #1f2630; border-radius:999px;
-}
-.strategy-col{ min-width:72px; opacity:.9; }
-.flex1{ flex:1; }
-.w70{ width:70px; }
-.w120{ width:120px; }
-.w60{ width:60px; }
-.w70.right, .w60.right, .right{ text-align:right; }
+.empty{padding:16px;color:#94a3b8}
+.card-title{font-weight:700;margin-bottom:6px}
