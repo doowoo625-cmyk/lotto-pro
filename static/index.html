@@ -3,100 +3,61 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Lotto v3.1-final (Clean)</title>
-
-  <!-- 파비콘: 404 제거용 (data URI) -->
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Crect width='64' height='64' fill='%23101419'/%3E%3Ctext x='32' y='42' text-anchor='middle' font-size='36' fill='%23a78bfa'%3EL%3C/text%3E%3C/svg%3E"/>
-
-  <!-- 기본/톤 CSS (캐시 무효화) -->
+  <title>Lotto v3.1-final (Predict-Only)</title>
   <link rel="stylesheet" href="/static/styles.css"/>
-  <link rel="stylesheet" href="/static/styles.tone.css?v=4"/>
-
-  <!-- 브라우저 확장 주입 오류(ethereum 재정의) 무시 가드 -->
- <script>
-  window.addEventListener('error', function(e){
-    const msg = String(e && e.message || '');
-    if (msg.includes('Cannot redefine property: ethereum')) {
-      e.preventDefault(); return false;
-    }
-  }, true);
-  </script>
-
+  <link rel="stylesheet" href="/static/styles.tone.css?v=5"/>
 </head>
 <body>
   <div class="container">
-    <header>
+    <header class="header">
       <h1>로또 예측 시스템 <span class="badge">v3.1-final</span></h1>
-      <div class="status">
-        <div>상태: <b id="apiStatus">확인 중…</b></div>
-        <div id="statusRight" class="right">직전 회차 로딩중…</div>
+      <div class="status row">
+        <div>상태: <b id="apiStatus">준비</b></div>
+        <!-- 최신회차/최근10회/구간빈도 제거 -->
       </div>
     </header>
 
+    <!-- ① 예측 번호 조회 -->
     <section>
-      <h2>① 예측 번호 조회</h2>
-      <div class="controls">
-        <button id="btnPredict">예측 번호 뽑기</button>
-        <span class="small subtle">버튼 클릭 시만 생성 · 근거(%) 표시</span>
+      <div class="row between">
+        <h2>① 예측 번호 조회</h2>
+        <div class="controls">
+          <button id="btnPredict">예측 번호 뽑기</button>
+          <span class="small subtle">버튼 클릭 시 최적 조합 5개 생성</span>
+        </div>
       </div>
-      <div id="bestBlock" class="card section-grid"></div>
+      <div class="card table-head">
+        <div class="row head">
+          <span class="col-rank">순위</span>
+          <span class="col-combo">조합</span>
+          <span class="col-meta">전략</span>
+          <span class="col-metrics">근거(Score / R/R / 승률%)</span>
+        </div>
+      </div>
+      <div id="bestBlock" class="card list"></div>
     </section>
 
+    <!-- ② 이번 주 추천 전략 (각 전략 1세트, 점수 내림차순 세로 카드) -->
     <section>
       <h2>② 이번 주 추천 전략</h2>
-      <div id="weeklyBlock" class="grid-3"></div>
+      <div id="weeklyBlock" class="stack"></div>
     </section>
 
+    <!-- ③ 전략별 추천 (보수형, 균형형, 고위험형 각 5세트씩) -->
     <section>
       <h2>③ 전략별 추천 (각 5세트)</h2>
-      <div id="byStrategyBlock" class="section-grid"></div>
-    </section>
-
-    <section>
-      <h2>④ 최근 10회 결과</h2>
-      <div class="controls">
-        <label>기준 회차
-          <input id="inpEndDraw" type="number" class="mono" placeholder="예: 1193" list="dlDraws"/>
-          <datalist id="dlDraws"></datalist>
-        </label>
-        <button id="btnRecent">조회</button>
-        <span class="small subtle">기본: 최신 기준 10회</span>
-      </div>
-      <div id="recentBlock" class="card section-grid"></div>
-    </section>
-
-    <section>
-      <h2>⑤ 구간별 번호 빈도</h2>
-      <div class="controls">
-        <label>기준 회차
-          <input id="inpEndDraw2" type="number" class="mono" placeholder="예: 1193" list="dlDraws2"/>
-          <datalist id="dlDraws2"></datalist>
-        </label>
-        <label>조회 회차(N)
-          <select id="selWindow">
-            <option value="10">10회</option><option value="5">5회</option>
-            <option value="20">20회</option><option value="30">30회</option>
-          </select>
-        </label>
-        <button id="btnRange">조회</button>
-      </div>
-      <div id="rangeBlock" class="grid-3"></div>
+      <div id="byStrategyBlock" class="grid-3"></div>
     </section>
   </div>
 
-  <!-- app.js 로딩 (캐시 무효화 + 실패 감지) -->
-  <script defer src="/static/app.js?v=4" onload="window.__appBooted=true" onerror="document.getElementById('apiStatus').textContent='스크립트 로드 실패(404)';"></script>
-
-  <!-- 폴백 경고: app.js가 못 뜨면 안내 메시지 표출 -->
   <script>
-    window.addEventListener('DOMContentLoaded', function(){
-      setTimeout(function(){
-        if (!window.__appBooted) {
-          const s = document.getElementById('apiStatus');
-          if (s) s.textContent = '스크립트 로드 실패(404). static/app.js 존재/경로 확인';
-        }
-      }, 300);
-    });
+  // 확장(지갑) 충돌 콘솔 에러 무시 처리(사이트 기능과 무관)
+  window.addEventListener('error', (e) => {
+    if (e && e.message && e.message.includes('Cannot redefine property: ethereum')) {
+      e.stopImmediatePropagation();
+    }
+  }, true);
   </script>
+  <script src="/static/app.js?v=5"></script>
 </body>
 </html>
