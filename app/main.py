@@ -1,4 +1,4 @@
-# app/main.py  (Render 최종 안정판 v7 — 요청 중 500 절대 금지)
+# app/main.py  (Render 최종 안정판 v7.1 — 요청 중 500 절대 금지)
 from __future__ import annotations
 
 import json, os, asyncio, random
@@ -7,13 +7,13 @@ from typing import List, Dict, Tuple, Optional
 
 import httpx
 from fastapi import FastAPI, Query
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 # ---------------- 기본 설정 ----------------
 LIVE_FETCH = os.getenv("LIVE_FETCH", "1")  # "1": 온라인 보조, "0": 캐시/시드만
 DH_BASE = "https://www.dhlottery.co.kr/common.do"
-HEADERS = {"User-Agent": "lotto-predictor/7.0 (+render)"}
+HEADERS = {"User-Agent": "lotto-predictor/7.1 (+render)"}
 TIMEOUT = httpx.Timeout(3.5, connect=2.5, read=2.5)  # 짧게
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -23,7 +23,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 CACHE_PATH = DATA_DIR / "recent.json"
 SEED_PATH = DATA_DIR / "seed.json"  # 초기 화면용 시드
 
-app = FastAPI(title="Lotto Predictor – stable v7")
+app = FastAPI(title="Lotto Predictor – stable v7.1")
 
 # 정적 & 루트
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -32,6 +32,12 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 async def root():
     html_path = STATIC_DIR / "index.html"
     return html_path.read_text(encoding="utf-8") if html_path.exists() else "<h1>index.html not found</h1>"
+
+# 파비콘 404 방지(선택)
+@app.get("/favicon.ico")
+async def favicon():
+    svg = "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='#2563eb'/><text x='8' y='10' text-anchor='middle' font-size='10' fill='white'>L</text></svg>"
+    return Response(content=svg, media_type="image/svg+xml")
 
 # ---------------- 캐시/시드 ----------------
 def read_cache() -> Dict[str, dict]:
@@ -176,6 +182,7 @@ def sample_pool_by_strategy(freq: Dict[int, int], strategy: str, seed: int) -> L
 
     pool: set[tuple[int, ...]] = set()
     tries = 0
+    # 🔧 오탈자 수정: '당구' → 'pool', 조건도 pool 길이 체크
     while len(pool) < 80 and tries < 2000:
         tries += 1
         if strategy == "보수형":
@@ -271,7 +278,9 @@ async def api_range_freq_by_end(end_no: int = Query(...), n: int = Query(10)):
     items = [cache[str(d)] for d in range(start, end + 1) if str(d) in cache]
     return JSONResponse(compute_range_freq(items))
 
+# ✅ 예측 API: GET/POST 모두 허용 (브라우저로 직접 테스트 가능)
 @app.post("/api/predict")
+@app.get("/api/predict")
 async def api_predict():
     """
     - 최신 회차/네트워크 상태와 무관하게 반드시 200 응답
@@ -289,42 +298,26 @@ async def api_predict():
 
     # 캐시가 완전 비어있으면 균등 가중으로라도 동작
     if not items:
-        # 가짜 빈도(전부 1)로 동작하여 버튼이 반드시 결과를 보여주도록
-        freq = {i: 1 for i in range(1, 46)}
-        def _fake_result():
-            import random
-            rnd = random.Random(777)  # 고정 시드(요청 때마다 동일해도 됨)
-            def pick6():
-                return sorted(rnd.sample(range(1,46), 6))
-            def score(nums):
-                # 최소 점수 계산(간단): 보상=6, 위험=0 → score=6
-                reward = 6.0
-                risk = 0.0
-                score = reward/(1.0 + risk)
-                return reward, risk, score
-            def pack(name, nums):
-                r,k,s = score(nums)
-                return {"name": name, "name_ko": name, "numbers": nums,
-                        "reward": round(r,3), "risk": round(k,3),
-                        "score": round(s,3), "rr": round(s,3), "win": 50.0}
-            # 전략별 5세트
-            res = {
-                "보수형": [pack("보수형", pick6()) for _ in range(5)],
-                "균형형": [pack("균형형", pick6()) for _ in range(5)],
-                "고위험형": [pack("고위험형", pick6()) for _ in range(5)],
-            }
-            pool = (res["보수형"][:2] + res["균형형"][:2] + res["고위험형"][:2])[:5]
-            return {
-                "best3_by_priority_korean": [res["균형형"][0], res["보수형"][0], res["고위험형"][0]],
-                "all_by_strategy_korean": res,
-                "best_strategy_top5": pool
-            }
-        return JSONResponse(_fake_result())
+        rnd = random.Random(777)
+        def pick6(): return sorted(rnd.sample(range(1,46), 6))
+        def pack(name, nums, s=6.0):  # reward=6, risk=0, score=6 기준
+            return {"name": name, "name_ko": name, "numbers": nums,
+                    "reward": 6.0, "risk": 0.0, "score": s, "rr": s, "win": 50.0}
+        res = {
+            "보수형": [pack("보수형", pick6()) for _ in range(5)],
+            "균형형": [pack("균형형", pick6()) for _ in range(5)],
+            "고위험형": [pack("고위험형", pick6()) for _ in range(5)],
+        }
+        pool = (res["보수형"][:2] + res["균형형"][:2] + res["고위험형"][:2])[:5]
+        return JSONResponse({
+            "best3_by_priority_korean": [res["균형형"][0], res["보수형"][0], res["고위험형"][0]],
+            "all_by_strategy_korean": res,
+            "best_strategy_top5": pool
+        })
 
-    # 캐시가 있으면 기존 로직으로 계산
+    # 캐시가 있으면 정상 점수 기반 산출
     payload = make_strategy_result(items, latest_draw=latest)
     return JSONResponse(payload)
-
 
 # ---------------- 기동 시 비차단 웜업 ----------------
 @app.on_event("startup")
