@@ -285,56 +285,94 @@ def make_strategy_result(items: List[dict], latest_draw: int) -> dict:
 async def api_latest():
     cache = read_cache()
     latest = max_cached_draw(cache)
-    if latest <= 0:
-        latest = await find_latest_draw_no(cache)
-        write_cache(cache)
-    # 더 최신이 열렸을 수 있으니 재확인
+
+    # 1) 최신 확인 시도 (오프라인이면 캐시 그대로)
     newest = await find_latest_draw_no(cache)
-    if newest != latest:
+    if newest > latest:
         latest = newest
         write_cache(cache)
+
+    # 2) 캐시에서 꺼내되, 없으면 마지막으로라도 "가장 큰 키" 시도
+    if latest <= 0 and cache:
+        latest = max_cached_draw(cache)
+
+    # 3) 그래도 없으면, 더미 대신 "안전 200 응답"을 반환해서 프런트가 멈추지 않게
     item = cache.get(str(latest))
     if not item:
-        raise HTTPException(500, "latest not found after refresh")
+        return JSONResponse({"draw_no": 0, "numbers": [], "bonus": 0, "date": None}, status_code=200)
+
     return JSONResponse(item)
+
 
 @app.get("/api/dhlottery/recent")
 async def api_recent(end_no: int = Query(..., gt=0), n: int = Query(10, gt=0, le=200)):
     cache = read_cache()
-    items = await ensure_recent(cache, end_no, n)
-    write_cache(cache)
-    return JSONResponse({"items": items})
+    try:
+        items = await ensure_recent(cache, end_no, n)
+        write_cache(cache)
+        return JSONResponse({"items": items})
+    except Exception:
+        # 실패하더라도 200 + 빈 배열 → 프런트는 화면을 그대로 유지
+        return JSONResponse({"items": []})
+
 
 @app.get("/api/range_freq_by_end")
 async def api_range_freq_by_end(end_no: int = Query(..., gt=0), n: int = Query(10, gt=0, le=200)):
     cache = read_cache()
-    items = await ensure_recent(cache, end_no, n)
-    write_cache(cache)
-    per = compute_range_freq(items)
-    return JSONResponse(per)
+    try:
+        items = await ensure_recent(cache, end_no, n)
+        write_cache(cache)
+        per = compute_range_freq(items)
+        return JSONResponse(per)
+    except Exception:
+        # 실패 시에도 200 + 빈 구조
+        empty = {k: {str(x): 0 for x in r} for k, r in range_buckets()}
+        return JSONResponse({"per": empty})
 
 @app.post("/api/predict")
 async def api_predict():
     cache = read_cache()
     latest = max_cached_draw(cache)
+
+    # 최신(짧게) 확인
+    newest = await find_latest_draw_no(cache)
+    if newest > latest:
+        latest = newest
+        write_cache(cache)
+
     if latest <= 0:
-        latest = await find_latest_draw_no(cache)
-        cache = read_cache()
-    items = await ensure_recent(cache, latest, 100)
-    write_cache(cache)
-    payload = make_strategy_result(items, latest_draw=latest)
+        # 캐시가 전혀 없을 때도 200 + 빈 구조
+        return JSONResponse({"best3_by_priority_korean": [], "all_by_strategy_korean": {}, "best_strategy_top5": []})
+
+    # 최근 100회 확보하되, 실패해도 가진 만큼으로 계산
+    items = []
+    try:
+        items = await ensure_recent(cache, latest, 100)
+        write_cache(cache)
+    except Exception:
+        items = [cache[str(k)] for k in sorted(map(int, cache.keys())) if k <= latest][-30:]  # 최소 보정
+
+    payload = make_strategy_result(items, latest_draw=latest) if items else {
+        "best3_by_priority_korean": [],
+        "all_by_strategy_korean": {},
+        "best_strategy_top5": []
+    }
     return JSONResponse(payload)
+
+
 
 # -------------------------
 # 기동 시 1회 캐시웜업 (비차단)
 # -------------------------
+
 @app.on_event("startup")
 async def on_startup():
+    # 부팅은 논블로킹: 실패해도 앱은 바로 응답
     try:
         cache = read_cache()
-        if max_cached_draw(cache) <= 0:
-            latest = await find_latest_draw_no(cache)
-            if latest > 0:
+        if LIVE_FETCH == "1" and max_cached_draw(cache) <= 0:
+            newest = await find_latest_draw_no(cache)
+            if newest > 0:
                 write_cache(cache)
     except Exception:
         pass
