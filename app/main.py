@@ -49,22 +49,38 @@ TIMEOUT = httpx.Timeout(8.0, connect=5.0, read=5.0)
 HEADERS = {"User-Agent": "lotto-predictor/5.0 (+render)"}
 
 async def fetch_draw(drw_no: int) -> Optional[dict]:
-    """특정 회차 1건 조회 (성공 시 표준화 dict, 실패/미등록 시 None)"""
+    """특정 회차 1건 조회 (성공 시 표준화 dict, 실패/미등록 시 None)
+       - 짧은 타임아웃 + 재시도
+    """
+    if LIVE_FETCH != "1":
+        return None  # 오프라인 모드: 네트워크 시도 안 함
+
     params = {"method": "getLottoNumber", "drwNo": str(drw_no)}
-    async with httpx.AsyncClient(timeout=TIMEOUT, headers=HEADERS) as client:
-        r = await client.get(DH_BASE, params=params)
-    if r.status_code != 200:
-        return None
-    data = r.json()
-    if not data or str(data.get("returnValue", "")).lower() != "success":
-        return None
-    nums = [data.get(f"drwtNo{i}") for i in range(1, 7)]
-    if None in nums:
-        return None
-    nums = sorted(int(n) for n in nums)
-    bn = int(data.get("bnusNo", 0))
-    date = data.get("drwNoDate")  # "YYYY-MM-DD"
-    return {"draw_no": int(data.get("drwNo")), "numbers": nums, "bonus": bn, "date": date}
+    last_exc = None
+    for _ in range(1 + RETRY):
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT, headers=HEADERS) as client:
+                r = await client.get(DH_BASE, params=params)
+            if r.status_code != 200:
+                last_exc = RuntimeError(f"status={r.status_code}")
+                await asyncio.sleep(0.1)
+                continue
+            data = r.json()
+            if not data or str(data.get("returnValue", "")).lower() != "success":
+                return None
+            nums = [data.get(f"drwtNo{i}") for i in range(1, 7)]
+            if None in nums:
+                return None
+            nums = sorted(int(n) for n in nums)
+            bn = int(data.get("bnusNo", 0))
+            date = data.get("drwNoDate")
+            return {"draw_no": int(data.get("drwNo")), "numbers": nums, "bonus": bn, "date": date}
+        except Exception as e:
+            last_exc = e
+            await asyncio.sleep(0.1)
+    # 재시도 실패 → None
+    return None
+
 
 # -------------------------
 # 캐시 I/O
@@ -88,52 +104,46 @@ def max_cached_draw(cache: Dict[str, dict]) -> int:
 # -------------------------
 # 최신 회차 탐색 (경계 찾기 + 이분 탐색)
 # -------------------------
-async def find_latest_draw_no(cache: Dict[str, dict]) -> int:
-    last = max_cached_draw(cache)
-    probe = (last + 1) if last > 0 else 1024
 
-    lo_success = 0
-    hi_fail = 0
-    step = probe
-    while True:
-        ok = await fetch_draw(step)
+async def find_latest_draw_no(cache: Dict[str, dict]) -> int:
+    """네트워크를 최소화해서 최신 회차를 탐색.
+       - 캐시에 값이 있으면 그 이후로 최대 +8까지만 확인
+       - 캐시가 전혀 없고 LIVE_FETCH=0이면 0 반환 (캐시만 사용)
+    """
+    last = max_cached_draw(cache)
+
+    # 오프라인 모드: 캐시만 신뢰
+    if LIVE_FETCH != "1":
+        return last
+
+    # 캐시가 있으면 그 다음부터 +8까지만 순차 확인 (빠르고 안전)
+    if last > 0:
+        cur = last + 1
+        newest = last
+        for _ in range(8):
+            ok = await fetch_draw(cur)
+            if ok:
+                cache[str(ok["draw_no"])] = ok
+                newest = ok["draw_no"]
+                cur += 1
+            else:
+                break
+        return newest
+
+    # 캐시가 없으면 합리적 시작점부터 최대 32회만 순차 확인
+    start = 1100
+    newest = 0
+    cur = start
+    for _ in range(32):
+        ok = await fetch_draw(cur)
         if ok:
             cache[str(ok["draw_no"])] = ok
-            lo_success = step
-            step *= 2
-            if step > 8192:
-                break
+            newest = ok["draw_no"]
+            cur += 1
         else:
-            hi_fail = step
             break
+    return newest
 
-    if lo_success == 0 and hi_fail == 0:
-        step = 1
-        while True:
-            ok = await fetch_draw(step)
-            if ok:
-                cache[str(ok["draw_no"])] = ok
-                lo_success = step
-                step *= 2
-            else:
-                hi_fail = step
-                break
-
-    if lo_success and hi_fail and hi_fail - lo_success > 1:
-        lo, hi = lo_success, hi_fail
-        while lo + 1 < hi:
-            mid = (lo + hi) // 2
-            ok = await fetch_draw(mid)
-            if ok:
-                cache[str(ok["draw_no"])] = ok
-                lo = mid
-            else:
-                hi = mid
-        latest = lo
-    else:
-        latest = lo_success
-
-    return latest
 
 # -------------------------
 # 최근 N회 확보
