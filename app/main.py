@@ -17,6 +17,30 @@ LIVE_FETCH = os.getenv("LIVE_FETCH", "1")  # "1": 온라인, "0": 오프라인-�
 TIMEOUT = httpx.Timeout(5.0, connect=3.0, read=3.0)  # 더 짧게
 RETRY = 2  # 네트워크 재시도 횟수 (총 1+RETRY 번)
 
+import asyncio
+import os
+
+# ---- 기존 TIMEOUT 유지 or 살짝 단축 가능
+TIMEOUT = httpx.Timeout(4.0, connect=3.0, read=3.0)
+
+async def http_get_json(url, params=None, headers=None, retries=2, backoff=0.4):
+    """네트워크 불안정 대비: 짧은 타임아웃 + 소프트 재시도"""
+    last_exc = None
+    for i in range(retries + 1):
+        try:
+            async with httpx.AsyncClient(timeout=TIMEOUT, headers=headers or HEADERS) as client:
+                r = await client.get(url, params=params)
+            if r.status_code == 200:
+                return r.json()
+            # 4xx/5xx도 재시도 1회 정도
+        except Exception as e:
+            last_exc = e
+        await asyncio.sleep(backoff * (2 ** i))
+    if last_exc:
+        raise last_exc
+    return None
+
+
 # -------------------------
 # 경로/폴더 준비
 # -------------------------
@@ -49,37 +73,48 @@ TIMEOUT = httpx.Timeout(8.0, connect=5.0, read=5.0)
 HEADERS = {"User-Agent": "lotto-predictor/5.0 (+render)"}
 
 async def fetch_draw(drw_no: int) -> Optional[dict]:
-    """특정 회차 1건 조회 (성공 시 표준화 dict, 실패/미등록 시 None)
-       - 짧은 타임아웃 + 재시도
-    """
-    if LIVE_FETCH != "1":
-        return None  # 오프라인 모드: 네트워크 시도 안 함
-
+    """특정 회차 1건 조회 (성공 시 표준화 dict, 실패/미등록 시 None)"""
     params = {"method": "getLottoNumber", "drwNo": str(drw_no)}
-    last_exc = None
-    for _ in range(1 + RETRY):
-        try:
-            async with httpx.AsyncClient(timeout=TIMEOUT, headers=HEADERS) as client:
-                r = await client.get(DH_BASE, params=params)
-            if r.status_code != 200:
-                last_exc = RuntimeError(f"status={r.status_code}")
-                await asyncio.sleep(0.1)
-                continue
-            data = r.json()
-            if not data or str(data.get("returnValue", "")).lower() != "success":
-                return None
-            nums = [data.get(f"drwtNo{i}") for i in range(1, 7)]
-            if None in nums:
-                return None
-            nums = sorted(int(n) for n in nums)
-            bn = int(data.get("bnusNo", 0))
-            date = data.get("drwNoDate")
-            return {"draw_no": int(data.get("drwNo")), "numbers": nums, "bonus": bn, "date": date}
-        except Exception as e:
-            last_exc = e
-            await asyncio.sleep(0.1)
-    # 재시도 실패 → None
-    return None
+    try:
+        data = await http_get_json(DH_BASE, params=params)
+    except Exception:
+        return None
+    if not data or str(data.get("returnValue", "")).lower() != "success":
+        return None
+    nums = [data.get(f"drwtNo{i}") for i in range(1, 7)]
+    if None in nums:
+        return None
+    nums = sorted(int(n) for n in nums)
+    bn = int(data.get("bnusNo", 0))
+    date = data.get("drwNoDate")
+    return {"draw_no": int(data.get("drwNo")), "numbers": nums, "bonus": bn, "date": date}
+
+def guess_anchor_from_time() -> int:
+    """대략적인 최신 회차 추정치(매주 1회, 2002년 12월 7일 1회차 기준)"""
+    # 2025년 10월 기준 러프하게 1200~1300대. 안전하게 1400로 잡고 내려감.
+    return int(os.getenv("LATEST_GUESS", "1400"))
+
+async def find_latest_draw_no(cache: Dict[str, dict]) -> int:
+    """가벼운 최신 탐색: 추정치에서 아래로 내려가며 첫 성공을 최신으로 간주."""
+    # 캐시에 이미 있으면 바로 반환
+    last = max_cached_draw(cache)
+    if last > 0:
+        # 혹시 +1이 열렸는지만 빠르게 확인
+        ok = await fetch_draw(last + 1)
+        if ok:
+            cache[str(ok["draw_no"])] = ok
+            return ok["draw_no"]
+        return last
+
+    # 캐시가 없으면 추정치(anchor)에서 아래로 스캔(최대 120회)
+    anchor = guess_anchor_from_time()
+    for d in range(anchor, max(1, anchor - 120), -1):
+        ok = await fetch_draw(d)
+        if ok:
+            cache[str(ok["draw_no"])] = ok
+            return ok["draw_no"]
+    # 그래도 못 찾으면 0
+    return 0
 
 
 # -------------------------
@@ -283,80 +318,71 @@ def make_strategy_result(items: List[dict], latest_draw: int) -> dict:
 # =========================
 @app.get("/api/latest")
 async def api_latest():
+    """
+    - 우선 캐시 최고값 사용
+    - 네트워크 성공하면 최신 덮어씀
+    - 실패해도 500 안 내고 캐시 기반으로 응답
+    """
     cache = read_cache()
     latest = max_cached_draw(cache)
 
-    # 1) 최신 확인 시도 (오프라인이면 캐시 그대로)
-    newest = await find_latest_draw_no(cache)
-    if newest > latest:
-        latest = newest
-        write_cache(cache)
+    # LIVE_FETCH=0 이면 네트워크 시도 최소화
+    live = os.getenv("LIVE_FETCH", "1") == "1"
 
-    # 2) 캐시에서 꺼내되, 없으면 마지막으로라도 "가장 큰 키" 시도
-    if latest <= 0 and cache:
-        latest = max_cached_draw(cache)
+    if live or latest <= 0:
+        try:
+            newest = await find_latest_draw_no(cache)
+            if newest > 0:
+                latest = newest
+                write_cache(cache)
+        except Exception:
+            pass
 
-    # 3) 그래도 없으면, 더미 대신 "안전 200 응답"을 반환해서 프런트가 멈추지 않게
-    item = cache.get(str(latest))
-    if not item:
-        return JSONResponse({"draw_no": 0, "numbers": [], "bonus": 0, "date": None}, status_code=200)
+    # 그래도 없으면 503로 명확히 안내(프런트는 로컬 플레이스홀더 표기 가능)
+    if latest <= 0 or str(latest) not in cache:
+        raise HTTPException(status_code=503, detail="latest unavailable (network/cache)")
 
-    return JSONResponse(item)
-
-
-@app.get("/api/dhlottery/recent")
-async def api_recent(end_no: int = Query(..., gt=0), n: int = Query(10, gt=0, le=200)):
-    cache = read_cache()
-    try:
-        items = await ensure_recent(cache, end_no, n)
-        write_cache(cache)
-        return JSONResponse({"items": items})
-    except Exception:
-        # 실패하더라도 200 + 빈 배열 → 프런트는 화면을 그대로 유지
-        return JSONResponse({"items": []})
-
-
-@app.get("/api/range_freq_by_end")
-async def api_range_freq_by_end(end_no: int = Query(..., gt=0), n: int = Query(10, gt=0, le=200)):
-    cache = read_cache()
-    try:
-        items = await ensure_recent(cache, end_no, n)
-        write_cache(cache)
-        per = compute_range_freq(items)
-        return JSONResponse(per)
-    except Exception:
-        # 실패 시에도 200 + 빈 구조
-        empty = {k: {str(x): 0 for x in r} for k, r in range_buckets()}
-        return JSONResponse({"per": empty})
+    return JSONResponse(cache[str(latest)])
 
 @app.post("/api/predict")
 async def api_predict():
+    """
+    - 최신 회차가 없으면 캐시 최대 회차로 대체
+    - 최근 100회가 안 모이면 가능한 범위 내에서 계산
+    - 절대 500 내지 않고 최소 추천이라도 반환
+    """
     cache = read_cache()
     latest = max_cached_draw(cache)
 
-    # 최신(짧게) 확인
-    newest = await find_latest_draw_no(cache)
-    if newest > latest:
-        latest = newest
-        write_cache(cache)
+    if latest <= 0:
+        try:
+            newest = await find_latest_draw_no(cache)
+            if newest > 0:
+                latest = newest
+                write_cache(cache)
+        except Exception:
+            pass
 
     if latest <= 0:
-        # 캐시가 전혀 없을 때도 200 + 빈 구조
-        return JSONResponse({"best3_by_priority_korean": [], "all_by_strategy_korean": {}, "best_strategy_top5": []})
+        # 최소 안전 응답
+        return JSONResponse({
+            "best3_by_priority_korean": [],
+            "all_by_strategy_korean": {"보수형": [], "균형형": [], "고위험형": []},
+            "best_strategy_top5": []
+        })
 
-    # 최근 100회 확보하되, 실패해도 가진 만큼으로 계산
-    items = []
-    try:
-        items = await ensure_recent(cache, latest, 100)
-        write_cache(cache)
-    except Exception:
-        items = [cache[str(k)] for k in sorted(map(int, cache.keys())) if k <= latest][-30:]  # 최소 보정
+    # 확보 가능한 범위 내에서 최대치만큼
+    items = await ensure_recent(cache, latest, 100)
+    write_cache(cache)
 
-    payload = make_strategy_result(items, latest_draw=latest) if items else {
-        "best3_by_priority_korean": [],
-        "all_by_strategy_korean": {},
-        "best_strategy_top5": []
-    }
+    if not items:
+        return JSONResponse({
+            "best3_by_priority_korean": [],
+            "all_by_strategy_korean": {"보수형": [], "균형형": [], "고위험형": []},
+            "best_strategy_top5": []
+        })
+
+    payload = make_strategy_result(items, latest_draw=latest)
     return JSONResponse(payload)
 
 
