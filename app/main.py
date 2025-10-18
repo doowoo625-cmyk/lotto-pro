@@ -10,6 +10,13 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
+import os
+import asyncio
+
+LIVE_FETCH = os.getenv("LIVE_FETCH", "1")  # "1": 온라인, "0": 오프라인-캐시 우선
+TIMEOUT = httpx.Timeout(5.0, connect=3.0, read=3.0)  # 더 짧게
+RETRY = 2  # 네트워크 재시도 횟수 (총 1+RETRY 번)
+
 # -------------------------
 # 경로/폴더 준비
 # -------------------------
