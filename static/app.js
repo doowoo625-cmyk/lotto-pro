@@ -1,3 +1,7 @@
+window.addEventListener('error', (e) => {
+  if (e?.message?.includes('Cannot redefine property: ethereum')) e.stopImmediatePropagation();
+}, true);
+
 const api = {
   async predict() {
     const r = await fetch('/api/predict', { method: 'POST' });
