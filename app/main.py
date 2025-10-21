@@ -10,6 +10,23 @@ from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+# === app/main.py 일부 (맨 위 import 아래 아무 곳에 추가) ===
+from fastapi import Request
+
+@app.get("/healthz")
+async def healthz():
+    # 프로세스/루프만 살아있으면 200
+    return JSONResponse({"ok": True})
+
+@app.get("/readyz")
+async def readyz():
+    # 캐시가 최소 1건이라도 있으면 준비 완료, 아니면도 200으로 돌려 502 방지
+    cache = read_cache()
+    latest = max_cached_draw(cache)
+    return JSONResponse({"ready": latest > 0, "latest": latest})
+
+
+
 # ---------------- 기본 설정 ----------------
 LIVE_FETCH = os.getenv("LIVE_FETCH", "1")  # "1": 온라인 보조, "0": 캐시/시드만
 DH_BASE = "https://www.dhlottery.co.kr/common.do"
