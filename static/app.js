@@ -70,6 +70,8 @@ function renderBestTop5FromBestStrategy(allBy) {
     </div>
   `).join('');
 }
+const url = `/api/predict?u=${Date.now()}`; // 캐시 회피
+fetch(url, { method: 'POST', cache: 'no-store', headers: { 'Cache-Control': 'no-store' }})
 
 // ② 이번 주 추천 전략 (각 전략 1세트, 점수 내림차순 → 카드 세로)
 function renderWeekly(best3) {
